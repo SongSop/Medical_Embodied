@@ -12,7 +12,7 @@ TICK_RE = re.compile(r"^=== TICK (\d+) ===$")
 
 BASE_SECTIONS = [
     (0, 4, "baseline idle.", "baseline idle.", "无触发，树保持空闲。", "baseline"),
-    (5, 12, "call signal response (ticks 5-8).", "call signal response.", "触发呼叫响应，LLMInteraction 模式为 call_response。", "call_signal"),
+    (5, 12, "call signal response (ticks 5-8).", "call signal response.", "触发呼叫响应，LLMInteraction 模式为 interrupt。", "call_signal"),
     (15, 20, "localization fault handling (ticks 15-18).", "localization fault handling.", "触发定位故障处理并报警。", "fault_loc"),
     (25, 31, "navigation fault handling (ticks 25-28).", "navigation fault handling.", "触发导航故障处理并报警。", "fault_nav"),
     (35, 41, "self fault handling (ticks 35-38).", "self fault handling.", "触发自检故障处理并报警。", "fault_self"),
@@ -96,7 +96,7 @@ def count_metrics(lines):
         "call_nurse": 0,
     }
     for ln in lines:
-        if "[START] LLMInteraction mode=call_response" in ln:
+        if "[START] LLMInteraction mode=2" in ln:
             metrics["llm_call_response"] += 1
         if "[ACT ] AlertFault type=localization" in ln:
             metrics["alert_fault_localization"] += 1
@@ -104,7 +104,7 @@ def count_metrics(lines):
             metrics["alert_fault_navigation"] += 1
         if "[ACT ] AlertFault type=self" in ln:
             metrics["alert_fault_self"] += 1
-        if "[START] NavgateTo target=charge_dock type=charge" in ln:
+        if "[START] NavgateTo" in ln and "type=2" in ln:
             metrics["nav_charge"] += 1
         if "[START] NavgateTo target=p" in ln:
             metrics["nav_patrol"] += 1
@@ -167,7 +167,7 @@ def main():
 
     offset = 0
     for tick, block in ticks:
-        if any("[START] LLMInteraction mode=call_response" in ln for ln in block):
+        if any("[START] LLMInteraction mode=2" in ln for ln in block):
             offset = tick - 8
             break
 

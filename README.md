@@ -39,35 +39,41 @@
 
 `behavior_tree`  
 作用：行为树执行与调度（BT.CPP 4.x），`ros_bt_runner` 负责将 ROS topic/service/action 映射为 BT 节点。  
-接口：订阅 `/battery`、`/fault`、`/call_signal`、`/patrol_triggered`。调用 `navigate`、`llm_interaction`、`call_nurse` 三个 action。调用 `detect_anomaly`、`patrol_trigger` 服务（私有命名空间：`/ros_bt_runner/...`）。  
-需实现：BT XML 逻辑的迭代与稳定性（在 `src/behavior_tree/BH_xml/medical.xml`）。真实硬件/算法节点替换 mock server。
+接口：订阅 `/battery`、`/fault`、`/call_signal`、`/patrol_triggered`。调用 `navigate`、`llm_interaction`、`call_nurse` 三个 action。调用 `~detect_anomaly`、`~patrol_trigger`、`~face_identify` 服务（私有命名空间：`/ros_bt_runner/...`），以及全局服务 `/loadconfig/set_config`。  
+BT 节点映射：`NavgateTo`->`Navigate.action`（`nav_type`: `goal/stop/dock`）；`Detect_BedProcess`->`DetectAnomaly.srv`（`mode`: `area/bed`，`area_bed_id`）；`FaceIdentify`->`FaceIdentify.srv`；`LLMInteraction`->`LLMInteraction.action`（`mode`: `alert/passive/interrupt`）；`CallDutyNurse`->`CallNurse.action`。  
+需实现：BT XML 逻辑迭代与稳定性（在 `src/behavior_tree/BH_xml/medical.xml`），真实硬件/算法节点替换 mock server。
 
 `interfaces`  
 作用：统一消息/服务/动作定义。  
 接口：  
-Action：`Navigate.action`、`LLMInteraction.action`、`CallNurse.action`。  
-Service：`DetectAnomaly.srv`、`PatrolTrigger.srv`、`Dock.srv`、`ChargeUntil.srv`。  
+Action：  
+- `Navigate.action`（goal: `target_index`, `nav_type`; result: `status`, `message`; feedback: `progress`）  
+- `LLMInteraction.action`（goal: `mode`, `person_id`, `context`; result: `status`, `summary`, `need_call_nurse`; feedback: `partial`）  
+- `CallNurse.action`（goal: `bed_ids[]`, `summarys[]`; result: `status`, `message`; feedback: `progress`）  
+Service：  
+- `DetectAnomaly.srv`（req: `mode`, `area_bed_id`; res: `is_anomaly`, `details`, `bed_ids[]`, `urgencies[]`）  
+- `PatrolTrigger.srv`、`Dock.srv`、`ChargeUntil.srv`、`FaceIdentify.srv`、`SetConfig.srv`  
 Message：`Battery.msg`、`Fault.msg`、`ActionStatus.msg` 等。  
 需实现：对接真实系统时保持接口兼容。
 
 `monitor`  
-作用：模拟监控输入（电量、故障、呼叫信号）与异常检测服务。  
-接口：发布 `/battery`、`/fault`、`/call_signal`；提供 `/detect_anomaly`。  
+作用：模拟监控输入（电量、故障、呼叫信号）与异常检测/人脸识别服务。  
+接口：发布 `/battery`、`/fault`、`/call_signal`；提供 `/ros_bt_runner/detect_anomaly`、`/ros_bt_runner/face_identify`。  
 需实现：接入真实监控数据源与异常检测算法。
 
 `navigation`  
 作用：导航 action mock。  
-接口：`navigate` action（goal: `target`, `nav_type`）。  
+接口：`navigate` action（goal: `target_index`, `nav_type`；`nav_type`: `goal=0`、`stop=1`、`dock=2`）。  
 需实现：接入真实导航栈与路径执行。
 
 `dialog`  
 作用：对话 action mock。  
-接口：`llm_interaction` action（goal: `mode`, `person_id`, `context`；result: `need_call_nurse`）。  
+接口：`llm_interaction` action（goal: `mode`, `person_id`, `context`；result: `need_call_nurse`；`mode`: `alert=0`、`passive=1`、`interrupt=2`）。  
 需实现：接入真实对话引擎与上下文管理。
 
 `nurse_call`  
 作用：呼叫护士 action mock。  
-接口：`call_nurse` action（goal: `bed_id`）。  
+接口：`call_nurse` action（goal: `bed_ids[]`, `summarys[]`）。  
 需实现：接入护士呼叫系统与业务流程。
 
 `patrol`  
@@ -80,6 +86,11 @@ Message：`Battery.msg`、`Fault.msg`、`ActionStatus.msg` 等。
 接口：`dock` service（`Dock.srv`）、`charge_until` service（`ChargeUntil.srv`）。  
 需实现：接入真实充电桩/回桩控制与 SOC 反馈闭环。
 
+`loadconfig`  
+作用：读取巡检配置并发布参数。  
+接口：`/loadconfig/set_config` service（`SetConfig.srv`），发布参数 `/loadconfig/patrol_route_id`、`/loadconfig/patrol_cycles`、`/loadconfig/patrol_points` 等。  
+需实现：接入真实配置管理系统。
+
 ## 三、BT 测试与参考实现
 
 `src/behavior_tree/src/medical_bt_test.cpp`  
@@ -91,7 +102,7 @@ Message：`Battery.msg`、`Fault.msg`、`ActionStatus.msg` 等。
 作用：ROS 版行为树执行器，将话题/服务/action 与 BT 节点绑定。  
 关键绑定：  
 - 订阅 `/battery` `/fault` `/call_signal` `/patrol_triggered`，更新黑板状态。  
-- 调用 `detect_anomaly` 服务，驱动异常检测节点。  
+- 调用 `~detect_anomaly` `~face_identify` `~patrol_trigger` 服务，驱动异常检测/人脸识别/触发控制。  
 - 调用 `navigate` `llm_interaction` `call_nurse` action，驱动执行节点。  
 参考点：节点输入输出字段、黑板键名、以及故障/电量/呼叫等触发条件的判断。
 
@@ -101,5 +112,3 @@ Message：`Battery.msg`、`Fault.msg`、`ActionStatus.msg` 等。
 - 如何设计可测的 action/service 接口（输入/输出尽量小而明确）。  
 - 如何驱动黑板触发条件（call_signal、fault、battery 等）。  
 - 日志格式 `[SET]/[ACT]/[COND]/[START]/[RUN]/[DONE]`，便于和 `medical_bt_test.cpp` 对齐。
-
-

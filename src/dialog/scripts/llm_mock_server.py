@@ -4,6 +4,10 @@ import actionlib
 
 from interfaces.msg import LLMInteractionAction, LLMInteractionResult, LLMInteractionFeedback, ActionStatus
 
+INTERACTION_ALERT = 0
+INTERACTION_PASSIVE = 1
+INTERACTION_INTERRUPT = 2
+
 
 class LLMMockServer:
     def __init__(self):
@@ -33,7 +37,7 @@ class LLMMockServer:
             self._server.publish_feedback(feedback)
             rate.sleep()
 
-        need_call_nurse = goal.mode == "abnormal_alert" and (goal.person_id % 2 == 1)
+        need_call_nurse = goal.mode == INTERACTION_ALERT and (goal.person_id % 2 == 1)
         result.status.status = ActionStatus.OK
         result.summary = "mock_summary"
         result.need_call_nurse = need_call_nurse

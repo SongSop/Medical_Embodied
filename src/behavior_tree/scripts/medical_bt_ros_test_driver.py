@@ -12,7 +12,19 @@ from interfaces.msg import NavigateAction, NavigateResult
 from interfaces.msg import LLMInteractionAction, LLMInteractionResult
 from interfaces.msg import CallNurseAction, CallNurseResult
 from interfaces.srv import DetectAnomaly, DetectAnomalyResponse
-from interfaces.srv import PatrolTrigger, PatrolTriggerResponse
+from interfaces.srv import FaceIdentify, FaceIdentifyResponse
+from interfaces.srv import SetConfig, SetConfigResponse
+
+INTERACTION_ALERT = 0
+INTERACTION_PASSIVE = 1
+INTERACTION_INTERRUPT = 2
+
+NAV_GOAL = 0
+NAV_STOP = 1
+NAV_DOCK = 2
+
+DETECT_AREA = 0
+DETECT_BED = 1
 
 
 class Metrics:
@@ -21,7 +33,7 @@ class Metrics:
         self.llm_abnormal = 0
         self.llm_passive = 0
         self.nav_stop = 0
-        self.nav_charge = 0
+        self.nav_dock = 0
         self.nav_patrol = 0
         self.call_nurse = 0
 
@@ -37,8 +49,9 @@ class MedicalBtRosTestDriver:
         self.call_signal_pub = rospy.Publisher("/call_signal", Bool, queue_size=10)
         self.patrol_trigger_pub = rospy.Publisher("/patrol_triggered", Bool, queue_size=1, latch=False)
 
-        self.patrol_trigger_srv = rospy.Service("/ros_bt_runner/patrol_trigger", PatrolTrigger, self.handle_patrol_trigger)
-        self.anomaly_srv = rospy.Service("/ros_bt_runner/detect_anomaly", DetectAnomaly, self.handle_detect_anomaly)
+        self.anomaly_srv = rospy.Service("/detect_anomaly", DetectAnomaly, self.handle_detect_anomaly)
+        self.face_identify_srv = rospy.Service("/face_identify", FaceIdentify, self.handle_face_identify)
+        self.set_config_srv = rospy.Service("/loadconfig/set_config", SetConfig, self.handle_set_config)
 
         self.nav_server = actionlib.SimpleActionServer(
             "navigate", NavigateAction, execute_cb=self.handle_navigate, auto_start=False
@@ -67,19 +80,16 @@ class MedicalBtRosTestDriver:
         if tick is not None:
             rospy.loginfo(f"[SIM ] tick={tick} patrol_triggered={str(value).lower()}")
 
-    def handle_patrol_trigger(self, req):
-        self.publish_patrol_triggered(bool(req.enable))
-        return PatrolTriggerResponse(ok=True)
 
     def handle_detect_anomaly(self, req):
-        if req.mode == "scan":
+        if req.mode == DETECT_AREA:
             return DetectAnomalyResponse(
                 is_anomaly=False,
                 details="scan",
-                bed_ids=["bed_1", "bed_0"],
+                bed_ids=[1, 0],
                 urgencies=[1, 2],
             )
-        is_anomaly = bool(req.bed_id.endswith("0"))
+        is_anomaly = (req.area_bed_id % 2 == 0)
         details = "anomaly" if is_anomaly else "normal"
         return DetectAnomalyResponse(
             is_anomaly=is_anomaly,
@@ -88,13 +98,36 @@ class MedicalBtRosTestDriver:
             urgencies=[],
         )
 
+    def handle_face_identify(self, _req):
+        return FaceIdentifyResponse(
+            success=True,
+            person_id=1,
+            confidence=0.9,
+            message="ok",
+        )
+
+    def handle_set_config(self, req):
+        config_id = (req.config_id or "default").strip()
+        if config_id == "default":
+            route_id = "route_a"
+            cycles = 2
+            points = ["p0", "p1"]
+        else:
+            route_id = "route_a"
+            cycles = 1
+            points = ["p0"]
+        rospy.set_param("/loadconfig/patrol_route_id", route_id)
+        rospy.set_param("/loadconfig/patrol_cycles", cycles)
+        rospy.set_param("/loadconfig/patrol_points", points)
+        return SetConfigResponse(ok=True, message="ok")
+
     def handle_navigate(self, goal):
         with self.lock:
-            if goal.nav_type == "stop" and goal.target == "current":
+            if goal.nav_type == NAV_STOP:
                 self.metrics.nav_stop += 1
-            if goal.nav_type == "charge" and goal.target == "charge_dock":
-                self.metrics.nav_charge += 1
-            if goal.target.startswith("p"):
+            if goal.nav_type == NAV_DOCK:
+                self.metrics.nav_dock += 1
+            if goal.nav_type == NAV_GOAL:
                 self.metrics.nav_patrol += 1
         time.sleep(0.05)
         result = NavigateResult()
@@ -103,13 +136,13 @@ class MedicalBtRosTestDriver:
         self.nav_server.set_succeeded(result)
 
     def handle_llm(self, goal):
-        need_call_nurse = (goal.mode == "abnormal_alert")
+        need_call_nurse = (goal.mode == INTERACTION_ALERT)
         with self.lock:
-            if goal.mode == "call_response":
+            if goal.mode == INTERACTION_INTERRUPT:
                 self.metrics.llm_call_response += 1
-            elif goal.mode == "abnormal_alert":
+            elif goal.mode == INTERACTION_ALERT:
                 self.metrics.llm_abnormal += 1
-            elif goal.mode == "passive_wakeup":
+            elif goal.mode == INTERACTION_PASSIVE:
                 self.metrics.llm_passive += 1
         time.sleep(0.05)
         result = LLMInteractionResult()
@@ -136,7 +169,7 @@ class MedicalBtRosTestDriver:
             self.section_marks[name] = (
                 self.metrics.llm_call_response,
                 self.metrics.nav_stop,
-                self.metrics.nav_charge,
+                self.metrics.nav_dock,
                 self.metrics.nav_patrol,
                 self.metrics.call_nurse,
             )
@@ -147,7 +180,7 @@ class MedicalBtRosTestDriver:
             return (
                 self.metrics.llm_call_response - start[0],
                 self.metrics.nav_stop - start[1],
-                self.metrics.nav_charge - start[2],
+                self.metrics.nav_dock - start[2],
                 self.metrics.nav_patrol - start[3],
                 self.metrics.call_nurse - start[4],
             )
@@ -204,9 +237,9 @@ class MedicalBtRosTestDriver:
         rospy.loginfo(f"medical_bt_ros_test_driver starting in {start_delay:.1f}s")
         time.sleep(start_delay)
         try:
-            rospy.wait_for_service("/ros_bt_runner/patrol_trigger", timeout=5.0)
-            rospy.wait_for_service("/ros_bt_runner/detect_anomaly", timeout=5.0)
-            self.handle_patrol_trigger(type("req", (), {"enable": False})())
+            rospy.wait_for_service("/detect_anomaly", timeout=5.0)
+            rospy.wait_for_service("/face_identify", timeout=5.0)
+            rospy.wait_for_service("/loadconfig/set_config", timeout=5.0)
         except rospy.ROSException:
             rospy.logwarn("services not ready; proceeding without initial patrol reset")
 
@@ -228,7 +261,7 @@ class MedicalBtRosTestDriver:
 
             if tick == 5:
                 rospy.loginfo(f"[TEST] tick={tick} Section: call signal response (ticks 5-8).")
-                rospy.loginfo(f"[TEST] tick={tick} 目标: 触发呼叫响应，LLMInteraction 模式为 call_response。")
+                rospy.loginfo(f"[TEST] tick={tick} 目标: 触发呼叫响应，LLMInteraction 模式为 interrupt。")
                 rospy.loginfo(f"[TEST] tick={tick} 结果: (区段结束后给出)")
                 self.mark_section("call_signal_1")
             if tick == 12:
@@ -282,20 +315,19 @@ class MedicalBtRosTestDriver:
                 rospy.loginfo(f"[TEST] tick={tick} 结果: (区段结束后给出)")
                 self.mark_section("patrol_2")
                 self.publish_patrol_triggered(True, tick=tick)
+                rospy.loginfo(f"[TEST] tick={tick} Section: nurse call handling (during patrol).")
+                rospy.loginfo(f"[TEST] tick={tick} 目标: 异常告警触发后产生呼叫护士。")
+                rospy.loginfo(f"[TEST] tick={tick} 结果: (区段结束后给出)")
+                self.mark_section("nurse_call")
             if tick == 61:
                 d = self.delta_section("patrol_2")
                 rospy.loginfo(f"[TEST] tick={tick} Section end: patrol run (cycles=2).")
                 rospy.loginfo(f"[TEST] tick={tick} 结果: {'PASS' if d[3] >= 1 else 'FAIL'} "
                               f"(nav_patrol+={d[3]})")
 
-            if tick == 50:
-                rospy.loginfo(f"[TEST] tick={tick} Section: nurse call queue handling.")
-                rospy.loginfo(f"[TEST] tick={tick} 目标: 处理护士呼叫队列并等待接通。")
-                rospy.loginfo(f"[TEST] tick={tick} 结果: (区段结束后给出)")
-                self.mark_section("nurse_call")
-            if tick == 80:
+            if tick == 61:
                 d = self.delta_section("nurse_call")
-                rospy.loginfo(f"[TEST] tick={tick} Section end: nurse call queue handling.")
+                rospy.loginfo(f"[TEST] tick={tick} Section end: nurse call handling.")
                 rospy.loginfo(f"[TEST] tick={tick} 结果: {'PASS' if d[4] >= 1 else 'FAIL'} "
                               f"(call_nurse+={d[4]})")
 
@@ -308,7 +340,7 @@ class MedicalBtRosTestDriver:
                 d = self.delta_section("battery_low")
                 rospy.loginfo(f"[TEST] tick={tick} Section end: low battery handling.")
                 rospy.loginfo(f"[TEST] tick={tick} 结果: {'PASS' if d[2] >= 1 else 'FAIL'} "
-                              f"(nav_charge+={d[2]})")
+                              f"(nav_dock+={d[2]})")
 
             if tick == 90:
                 rospy.loginfo(f"[TEST] tick={tick} Section: patrol run (cycles=1).")

@@ -1,7 +1,7 @@
-string mode   # scan or bed
-string bed_id
+int32 mode   # scan or bed
+int32 area_bed_id
 ---
 bool is_anomaly
 string details
-string[] bed_ids
+int32[] bed_ids
 int32[] urgencies

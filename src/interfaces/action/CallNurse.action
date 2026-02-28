@@ -1,5 +1,6 @@
 # goal
-string bed_id
+int32[] bed_ids
+string[] summarys
 ---
 interfaces/ActionStatus status
 string message

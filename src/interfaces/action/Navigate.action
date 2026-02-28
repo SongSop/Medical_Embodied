@@ -1,6 +1,6 @@
 # goal
-string target
-string nav_type
+int32 target_index
+int32 nav_type
 ---
 interfaces/ActionStatus status
 string message

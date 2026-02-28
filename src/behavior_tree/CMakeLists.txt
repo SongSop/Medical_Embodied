@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   actionlib
   interfaces
+  loadconfig
   std_msgs
 )
 

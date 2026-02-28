@@ -2,17 +2,18 @@
 import rospy
 from interfaces.srv import DetectAnomaly, DetectAnomalyResponse
 
-
-def _parse_csv(value):
-    if not value:
-        return []
-    return [v.strip() for v in value.split(",") if v.strip()]
+DETECT_AREA = 0
+DETECT_BED = 1
 
 
 def _parse_int_csv(value):
-    items = _parse_csv(value)
+    if not value:
+        return []
     out = []
-    for item in items:
+    for item in value.split(","):
+        item = item.strip()
+        if not item:
+            continue
         try:
             out.append(int(item))
         except ValueError:
@@ -21,9 +22,8 @@ def _parse_int_csv(value):
 
 
 def handle(req):
-    mode = (req.mode or "").strip() or ("scan" if not req.bed_id else "bed")
-    if mode == "scan":
-        beds = _parse_csv(rospy.get_param("~scan_beds", "bed_0,bed_2"))
+    if req.mode == DETECT_AREA:
+        beds = _parse_int_csv(rospy.get_param("~scan_beds", "0,2"))
         urgencies = _parse_int_csv(rospy.get_param("~scan_urgencies", "2,1"))
         while len(urgencies) < len(beds):
             urgencies.append(0)
@@ -39,14 +39,14 @@ def handle(req):
             urgencies=urg,
         )
 
-    bed_id = req.bed_id.strip() if req.bed_id else ""
+    bed_id = int(req.bed_id)
     force = rospy.get_param("~force_anomaly", "")
     if force.lower() in ("true", "1", "yes"):
         is_anomaly = True
     elif force.lower() in ("false", "0", "no"):
         is_anomaly = False
     else:
-        is_anomaly = bed_id.endswith("0")
+        is_anomaly = (bed_id % 2 == 0)
 
     details = "mock anomaly" if is_anomaly else "normal"
     rospy.loginfo("detect_anomaly mode=bed bed_id=%s -> %s", bed_id, details)

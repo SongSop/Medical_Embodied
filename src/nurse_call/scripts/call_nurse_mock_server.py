@@ -19,10 +19,10 @@ class CallNurseMockServer:
     def _execute(self, goal):
         result = CallNurseResult()
         feedback = CallNurseFeedback()
-
-        if not goal.bed_id:
+        #是否完成对应修改？
+        if not goal.bed_ids:
             result.status.status = ActionStatus.ABORTED
-            result.message = "empty bed_id"
+            result.message = "empty bed_ids"
             self._server.set_aborted(result, result.message)
             return
 

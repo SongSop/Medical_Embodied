@@ -11,11 +11,15 @@
 #include "interfaces/Fault.h"
 #include "interfaces/LLMInteractionAction.h"
 #include "interfaces/NavigateAction.h"
-#include "interfaces/PatrolTrigger.h"
 #include "interfaces/DetectAnomaly.h"
+#include "interfaces/SetConfig.h"
+#include "interfaces/FaceIdentify.h"
+#include "loadconfig/mode_define.h"
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
+#include <xmlrpcpp/XmlRpcValue.h>
 #include <functional>
 #include <iostream>
 #include <string>
@@ -26,10 +30,83 @@ using namespace BT;
 
 namespace {
 
+int navTypeFromString(const std::string& s)
+{
+    if (!s.empty())
+    {
+        char* end = nullptr;
+        long v = std::strtol(s.c_str(), &end, 10);
+        if (end && *end == '\0')
+        {
+            return static_cast<int>(v);
+        }
+    }
+    if (s == "goal")
+    {
+        return NAVIGATION::GOAL;
+    }
+    if (s == "stop")
+    {
+        return NAVIGATION::STOP;
+    }
+    if (s == "dock")
+    {
+        return NAVIGATION::DOCK;
+    }
+    return NAVIGATION::STOP;
+}
+
+int detectModeFromString(const std::string& s)
+{
+    if (!s.empty())
+    {
+        char* end = nullptr;
+        long v = std::strtol(s.c_str(), &end, 10);
+        if (end && *end == '\0')
+        {
+            return static_cast<int>(v);
+        }
+    }
+    if (s == "area")
+    {
+        return DETECT::AREA;
+    }
+    if (s == "bed")
+    {
+        return DETECT::BED;
+    }
+    return DETECT::AREA;
+}
+
+int interactionModeFromString(const std::string& s)
+{
+    if (!s.empty())
+    {
+        char* end = nullptr;
+        long v = std::strtol(s.c_str(), &end, 10);
+        if (end && *end == '\0')
+        {
+            return static_cast<int>(v);
+        }
+    }
+    if (s == "passive")
+    {
+        return INTERACTION::PASSIVE;
+    }
+    if (s == "alert")
+    {
+        return INTERACTION::ALERT;
+    }
+    if (s == "interrupt")
+    {
+        return INTERACTION::INTERUPT;
+    }
+    return INTERACTION::PASSIVE;
+}
+
 struct RosContext
 {
     ros::NodeHandle nh;
-    ros::ServiceClient patrol_client;
     ros::Subscriber battery_sub;
     ros::Subscriber fault_sub;
     ros::Subscriber call_signal_sub;
@@ -45,11 +122,48 @@ struct RosContext
     bool call_signal = false;
     bool patrol_triggered = false;
     double battery_low_threshold = 20.0;
-    int beds_per_patrol = 2;
 };
 
 Blackboard::Ptr g_root_bb;
 std::shared_ptr<RosContext> g_ctx;
+ros::ServiceClient g_loadconfig_client;
+std::string g_config_id = "default";
+bool g_config_loaded = false;
+
+struct PatrolContext
+{
+    std::string route_id = "route_a";
+    int cycles_total = 1;
+    int cycles_remaining = 1;
+    int point_index = 0;
+    std::vector<std::string> points = {"p0", "p1"};
+    bool complete = false;
+};
+
+std::shared_ptr<PatrolContext> g_patrol_ctx;
+
+bool readPatrolPoints(std::vector<std::string>& out_points)
+{
+    XmlRpc::XmlRpcValue value;
+    if (!ros::param::get("/loadconfig/patrol_points", value))
+    {
+        return false;
+    }
+    if (value.getType() != XmlRpc::XmlRpcValue::TypeArray)
+    {
+        return false;
+    }
+    out_points.clear();
+    for (int i = 0; i < value.size(); ++i)
+    {
+        if (value[i].getType() != XmlRpc::XmlRpcValue::TypeString)
+        {
+            continue;
+        }
+        out_points.emplace_back(static_cast<std::string>(value[i]));
+    }
+    return !out_points.empty();
+}
 
 bool getBool(const Blackboard::Ptr& bb, const std::string& key, bool default_value = false)
 {
@@ -159,7 +273,10 @@ public:
     IdleWait(const std::string& name, const NodeConfig& config) : StatefulActionNode(name, config) {}
     static PortsList providedPorts() { return {}; }
     NodeStatus onStart() override { return NodeStatus::RUNNING; }
-    NodeStatus onRunning() override { return NodeStatus::RUNNING; }
+    NodeStatus onRunning() override { 
+        std::cout<<"[IdleWait] RUNNING\n";
+        return NodeStatus::RUNNING; 
+    }
     void onHalted() override {}
 };
 
@@ -173,20 +290,21 @@ public:
 
     static PortsList providedPorts()
     {
-        return { InputPort<std::string>("target"), InputPort<std::string>("nav_type") };
+        return { InputPort<int>("target"), InputPort<std::string>("nav_type") };
     }
 
     NodeStatus onStart() override
     {
-        auto target = getInput<std::string>("target").value_or("unknown");
-        auto nav_type = getInput<std::string>("nav_type").value_or("goal");
+        auto target = getInput<int>("target").value_or(-1);
+        auto nav_type_str = getInput<std::string>("nav_type").value_or("stop");
+        int nav_type = navTypeFromString(nav_type_str);
         if (!ac_.waitForServer(ros::Duration(1.0)))
         {
             std::cout << "[ERR ] NavgateTo no server\n";
             return NodeStatus::FAILURE;
         }
         interfaces::NavigateGoal goal;
-        goal.target = target;
+        goal.target_index = target;
         goal.nav_type = nav_type;
         ac_.sendGoal(goal);
         std::cout << "[START] NavgateTo target=" << target << " type=" << nav_type << "\n";
@@ -197,6 +315,7 @@ public:
     {
         if (!ac_.getState().isDone())
         {
+            std::cout<<"[RUNNING] Navgating\n";
             return NodeStatus::RUNNING;
         }
         auto result = ac_.getResult();
@@ -234,13 +353,19 @@ public:
 
     static PortsList providedPorts()
     {
-        return { InputPort<std::string>("mode"), InputPort<int>("person_id"), OutputPort<bool>("need_call_nurse") };
+        return { InputPort<std::string>("mode"), 
+                 InputPort<int>("person_id"), 
+                 InputPort<std::string>("context"),
+                 OutputPort<bool>("need_call_nurse"),
+                 OutputPort<std::string>("summary") };
     }
 
     NodeStatus onStart() override
     {
-        auto mode = getInput<std::string>("mode").value_or("unknown");
+        auto mode_str = getInput<std::string>("mode").value_or("passive");
+        int mode = interactionModeFromString(mode_str);
         int person_id = getInput<int>("person_id").value_or(-1);
+        auto context = getInput<std::string>("context").value_or("none");
         if (!ac_.waitForServer(ros::Duration(1.0)))
         {
             std::cout << "[ERR ] LLMInteraction no server\n";
@@ -249,7 +374,7 @@ public:
         interfaces::LLMInteractionGoal goal;
         goal.mode = mode;
         goal.person_id = person_id;
-        goal.context = "";
+        goal.context = context;
         ac_.sendGoal(goal);
         std::cout << "[START] LLMInteraction mode=" << mode << " person_id=" << person_id << "\n";
         return NodeStatus::RUNNING;
@@ -259,6 +384,7 @@ public:
     {
         if (!ac_.getState().isDone())
         {
+            std::cout<<"[RUNNING] LLMInteraction\n";
             return NodeStatus::RUNNING;
         }
         auto result = ac_.getResult();
@@ -268,11 +394,10 @@ public:
             return NodeStatus::FAILURE;
         }
         bool need_call_nurse = result->need_call_nurse;
+        auto summary = result->summary;
         setOutput("need_call_nurse", need_call_nurse);
-        if (config().blackboard)
-        {
-            config().blackboard->set("call_nurse", need_call_nurse);
-        }
+        setOutput("summary",summary);
+
         std::cout << "[DONE] LLMInteraction need_call_nurse=" << (need_call_nurse ? "true" : "false") << "\n";
         return actionOk(result->status) ? NodeStatus::SUCCESS : NodeStatus::FAILURE;
     }
@@ -291,24 +416,28 @@ class CallDutyNurse : public StatefulActionNode
 {
 public:
     CallDutyNurse(const std::string& name, const NodeConfig& config)
-        : StatefulActionNode(name, config), ac_("call_nurse", false)
-    {
-    }
+        : StatefulActionNode(name, config), ac_("call_nurse", false){}
 
-    static PortsList providedPorts() { return { InputPort<std::string>("bed_id") }; }
+    static PortsList providedPorts() { return { InputPort<int>("bed_id"),
+                                                InputPort<std::string>("summary"),
+                                                OutputPort<bool>("need_call_nurse") }; }
 
     NodeStatus onStart() override
     {
-        auto bed_id = getInput<std::string>("bed_id").value_or("unknown");
+        int bed_id = getInput<int>("bed_id").value_or(-1);
+        auto summary = getInput<std::string>("summary").value_or("unknow");
         if (!ac_.waitForServer(ros::Duration(1.0)))
         {
             std::cout << "[ERR ] CallDutyNurse no server\n";
             return NodeStatus::FAILURE;
         }
+        need_nurse_beds.push_back(bed_id);
+        summarys.push_back(summary);
         interfaces::CallNurseGoal goal;
-        goal.bed_id = bed_id;
+        goal.bed_ids = need_nurse_beds;
+        goal.summarys = summarys;
         ac_.sendGoal(goal);
-        std::cout << "[START] CallDutyNurse bed_id=" << bed_id << "\n";
+        std::cout << "[START] CallDutyNurse" << "\n";
         return NodeStatus::RUNNING;
     }
 
@@ -316,6 +445,7 @@ public:
     {
         if (!ac_.getState().isDone())
         {
+            std::cout<<"[RUNNING] CalldutyNurse\n";
             return NodeStatus::RUNNING;
         }
         auto result = ac_.getResult();
@@ -324,13 +454,10 @@ public:
             std::cout << "[ERR ] CallDutyNurse no result\n";
             return NodeStatus::FAILURE;
         }
-        bool ok = actionOk(result->status);
-        if (config().blackboard)
-        {
-            config().blackboard->set("nurse_connected", ok);
-        }
-        std::cout << "[DONE] CallDutyNurse ok=" << (ok ? "true" : "false") << "\n";
-        return ok ? NodeStatus::SUCCESS : NodeStatus::FAILURE;
+        bool nurse_response = actionOk(result->status);
+        setOutput<bool>("need_call_nurse",!nurse_response);
+        std::cout << "[DONE] CallDutyNurse ok=" << (nurse_response ? "true" : "false") << "\n";
+        return nurse_response ? NodeStatus::SUCCESS : NodeStatus::FAILURE;
     }
 
     void onHalted() override
@@ -341,6 +468,8 @@ public:
 
 private:
     actionlib::SimpleActionClient<interfaces::CallNurseAction> ac_;
+    std::vector<int> need_nurse_beds;
+    std::vector<std::string> summarys;
 };
 
 class SelectNextBed : public SyncActionNode
@@ -348,37 +477,25 @@ class SelectNextBed : public SyncActionNode
 public:
     SelectNextBed(const std::string& name, const NodeConfig& config) : SyncActionNode(name, config) {}
 
-    static PortsList providedPorts() { return { OutputPort<std::string>("bed_id") }; }
+    static PortsList providedPorts() { return { InputPort<std::vector<int>>("bed_queue"),
+                                                OutputPort<int>("bed_id") }; }
 
     NodeStatus tick() override
     {
         auto bb = config().blackboard;
-        std::vector<std::string> queue;
-        if (bb->get("bed_queue", queue) && !queue.empty())
+        auto queue = getInput<std::vector<int>>("bed_queue").value();
+
+        if (!queue.empty())
         {
-            std::string bed_id = queue.front();
+            int bed_id = queue.front();
             queue.erase(queue.begin());
             bb->set("bed_queue", queue);
-            bb->set("beds_remaining", static_cast<int>(queue.size()));
-            bb->set("bed_id", bed_id);
             setOutput("bed_id", bed_id);
             std::cout << "[SET ] SelectNextBed -> bed_id=" << bed_id << " remaining=" << queue.size() << "\n";
             return NodeStatus::SUCCESS;
         }
-        int remaining = getInt(bb, "beds_remaining", 0);
-        int idx = getInt(bb, "bed_index", -1) + 1;
-        if (remaining > 0)
-        {
-            bb->set("beds_remaining", remaining - 1);
-            bb->set("bed_index", idx);
-            std::string bed_id = "bed_" + std::to_string(idx);
-            bb->set("bed_id", bed_id);
-            setOutput("bed_id", bed_id);
-            std::cout << "[SET ] SelectNextBed -> bed_id=" << bed_id << " remaining=" << (remaining - 1) << "\n";
-            return NodeStatus::SUCCESS;
-        }
-        bb->set("bed_id", std::string("unknown"));
-        setOutput("bed_id", std::string("unknown"));
+        setOutput("bed_id",-1);
+        std::cout<< "bed queue is empty<<\n";
         return NodeStatus::FAILURE;
     }
 };
@@ -431,48 +548,6 @@ public:
     }
 };
 
-class EnqueueNurseCall : public SyncActionNode
-{
-public:
-    EnqueueNurseCall(const std::string& name, const NodeConfig& config) : SyncActionNode(name, config) {}
-
-    static PortsList providedPorts() { return { InputPort<std::string>("bed_id") }; }
-
-    NodeStatus tick() override
-    {
-        auto bb = config().blackboard;
-        std::string bed_id = getInput<std::string>("bed_id").value_or(getString(bb, "bed_id", "unknown"));
-        if (g_root_bb)
-        {
-            g_root_bb->set("nurse_call_pending", true);
-            g_root_bb->set("nurse_call_bed_id", bed_id);
-        }
-        std::cout << "[ACT ] EnqueueNurseCall bed_id=" << bed_id << "\n";
-        return NodeStatus::SUCCESS;
-    }
-};
-
-class PopNurseCall : public SyncActionNode
-{
-public:
-    PopNurseCall(const std::string& name, const NodeConfig& config) : SyncActionNode(name, config) {}
-
-    static PortsList providedPorts() { return { OutputPort<std::string>("bed_id") }; }
-
-    NodeStatus tick() override
-    {
-        auto bb = config().blackboard;
-        std::string bed_id = getString(g_root_bb.get(), "nurse_call_bed_id", "unknown");
-        if (g_root_bb)
-        {
-            g_root_bb->set("nurse_call_pending", false);
-        }
-        bb->set("nurse_bed_id", bed_id);
-        setOutput("bed_id", bed_id);
-        std::cout << "[ACT ] PopNurseCall bed_id=" << bed_id << "\n";
-        return NodeStatus::SUCCESS;
-    }
-};
 
 class ClearInteractionMode : public SyncActionNode
 {
@@ -501,32 +576,8 @@ public:
 
     NodeStatus tick() override
     {
-        auto mode = getInput<std::string>("mode").value_or("unknown");
-        std::string current = getString(g_root_bb.get(), "interaction_mode", "none");
-        auto norm = [](std::string s) {
-            s.erase(std::remove_if(s.begin(), s.end(), ::isspace), s.end());
-            if (!s.empty() && s.front() == '[') s.erase(s.begin());
-            if (!s.empty() && s.back() == ']') s.pop_back();
-            return s;
-        };
-        std::string list = norm(mode);
-        if (list.find(',') == std::string::npos)
-        {
-            return (current == list) ? NodeStatus::SUCCESS : NodeStatus::FAILURE;
-        }
-        size_t start = 0;
-        while (start < list.size())
-        {
-            size_t end = list.find(',', start);
-            if (end == std::string::npos) end = list.size();
-            std::string item = list.substr(start, end - start);
-            if (current == item)
-            {
-                return NodeStatus::SUCCESS;
-            }
-            start = end + 1;
-        }
-        return NodeStatus::FAILURE;
+        auto mode = getInput<std::string>("mode").value_or("none");
+        return (mode == "passive" || mode == "alert") ? NodeStatus::SUCCESS : NodeStatus::FAILURE;
     }
 };
 
@@ -539,14 +590,9 @@ public:
 
     NodeStatus tick() override
     {
-        auto bb = config().blackboard;
         auto route_id = getInput<std::string>("route_id").value_or("route_default");
         int cycles = getInput<int>("cycles").value_or(1);
-        bb->set("patrol_route_id", route_id);
-        bb->set("patrol_cycles", cycles);
-        bb->set("patrol_remaining", cycles);
-        bb->set("patrol_complete", false);
-        std::cout << "[ACT ] LoadPatrolPlan route_id=" << route_id << " cycles=" << cycles << "\n";
+        std::cout << "[ACT ] LoadPatrolPlan (noop) route_id=" << route_id << " cycles=" << cycles << "\n";
         return NodeStatus::SUCCESS;
     }
 };
@@ -560,25 +606,90 @@ public:
 
     NodeStatus tick() override
     {
-        auto bb = config().blackboard;
-        int remaining = getInt(bb, "patrol_remaining", 0);
-        if (remaining <= 0)
+        if (!g_patrol_ctx)
         {
             return NodeStatus::FAILURE;
         }
-        remaining -= 1;
-        bb->set("patrol_remaining", remaining);
-        if (remaining == 0)
+        if (g_patrol_ctx->cycles_remaining <= 0)
         {
-            bb->set("patrol_complete", true);
+            return NodeStatus::FAILURE;
         }
-        int index = getInt(bb, "patrol_index", 0);
-        std::string point = "p" + std::to_string(index % 2);
-        bb->set("patrol_point", point);
-        bb->set("patrol_index", index + 1);
+        if (g_patrol_ctx->points.empty())
+        {
+            g_patrol_ctx->complete = true;
+            g_patrol_ctx->cycles_remaining = 0;
+            return NodeStatus::FAILURE;
+        }
+        int index = g_patrol_ctx->point_index;
+        if (index < 0 || index >= static_cast<int>(g_patrol_ctx->points.size()))
+        {
+            index = 0;
+        }
+        std::string point = g_patrol_ctx->points[index];
+        index += 1;
+        if (index >= static_cast<int>(g_patrol_ctx->points.size()))
+        {
+            index = 0;
+            g_patrol_ctx->cycles_remaining -= 1;
+            if (g_patrol_ctx->cycles_remaining <= 0)
+            {
+                g_patrol_ctx->complete = true;
+            }
+        }
+        g_patrol_ctx->point_index = index;
         setOutput("patrol_point", point);
         std::cout << "[ACT ] NextPatrolPoint -> " << point << "\n";
         return NodeStatus::SUCCESS;
+    }
+};
+
+class Detect_BedProcess: public SyncActionNode
+{
+public:
+    Detect_BedProcess(const std::string& name, const NodeConfig& config): SyncActionNode(name,config){}
+    static PortsList providedPorts (){
+        return {InputPort<std::string>("mode"),
+                InputPort<int>("patrol_bed_id"),
+                OutputPort<std::vector<int>>("bed_queue"),
+                OutputPort<std::string>("interaction_mode"),
+                OutputPort<std::string>("context")};
+    }
+    NodeStatus tick() override
+    {
+        auto bb = config().blackboard;
+        auto mode_str = getInput<std::string>("mode").value_or("area");
+        int scan_mode = detectModeFromString(mode_str);
+        interfaces::DetectAnomaly srv;
+        srv.request.area_bed_id=getInput<int>("patrol_bed_id").value_or(-1);
+        if (scan_mode == DETECT::BED){
+            srv.request.mode=DETECT::BED;
+            if (g_ctx && g_ctx->anomaly_client.call(srv)){
+                if(srv.response.is_anomaly){
+                    setOutput<std::string>("interaction_mode","alert");
+                    setOutput<std::string>("context",srv.response.details);
+                }
+                else{
+                    setOutput<std::string>("interaction_mode","passive");
+                }
+            }
+            std::cout << "[SET ] AnomalyDetect bed=" << srv.request.area_bed_id 
+                      << " anomaly=" << (srv.response.is_anomaly ? "true" : "false")
+                      << " details=" << srv.response.details << "\n";
+            return NodeStatus::SUCCESS;
+        }
+        else if (scan_mode == DETECT::AREA){
+            srv.request.mode=DETECT::AREA;
+            if (g_ctx && g_ctx->anomaly_client.call(srv)){
+                std::vector<int> bed_queue(srv.response.bed_ids.begin(),srv.response.bed_ids.end());
+                setOutput<std::vector<int>>("bed_queue",bed_queue);
+                std::cout << "[SET ] AnomalyDetect scan beds=" << bed_queue.size() << "\n";
+            }
+            return NodeStatus::SUCCESS;  
+        }
+        else{
+            std::cout<<"[ERROR] Detect_bedProcess scan_mode can not be recognized\n";
+            return NodeStatus::FAILURE;
+        }
     }
 };
 
@@ -646,14 +757,14 @@ public:
 
     NodeStatus tick() override
     {
+        if (g_patrol_ctx)
+        {
+            g_patrol_ctx->complete = false;
+            g_patrol_ctx->cycles_remaining = g_patrol_ctx->cycles_total;
+            g_patrol_ctx->point_index = 0;
+        }
         if (g_ctx)
         {
-            interfaces::PatrolTrigger srv;
-            srv.request.enable = false;
-            if (g_ctx->patrol_client.exists())
-            {
-                g_ctx->patrol_client.call(srv);
-            }
             g_ctx->patrol_triggered = false;
         }
         std::cout << "[ACT ] ClearPatrolTrigger\n";
@@ -672,33 +783,6 @@ public:
     {
         return (g_ctx && g_ctx->patrol_triggered) ? NodeStatus::SUCCESS : NodeStatus::FAILURE;
     }
-};
-
-class WaitNurseConnected : public StatefulActionNode
-{
-public:
-    WaitNurseConnected(const std::string& name, const NodeConfig& config) : StatefulActionNode(name, config) {}
-    static PortsList providedPorts() { return {}; }
-
-    NodeStatus onStart() override
-    {
-        std::cout << "[START] WaitNurseConnected\n";
-        return NodeStatus::RUNNING;
-    }
-
-    NodeStatus onRunning() override
-    {
-        auto bb = config().blackboard;
-        if (getBool(bb, "nurse_connected", false))
-        {
-            std::cout << "[DONE] Nurse connected\n";
-            return NodeStatus::SUCCESS;
-        }
-        std::cout << "[RUN ] Waiting for nurse connection\n";
-        return NodeStatus::RUNNING;
-    }
-
-    void onHalted() override {}
 };
 
 class LambdaAction : public SyncActionNode
@@ -748,19 +832,20 @@ private:
 
 int main(int argc, char** argv)
 {
-    ros::init(argc, argv, "medical_bt_ros_runner");
+    ros::init(argc, argv, "ros_bt_runner");
     ros::NodeHandle nh("~");
 
     g_ctx = std::make_shared<RosContext>();
+    g_patrol_ctx = std::make_shared<PatrolContext>();
     g_ctx->battery_low_threshold = nh.param("battery_low_threshold", 20.0);
-    g_ctx->beds_per_patrol = nh.param("beds_per_patrol", 2);
-    g_ctx->patrol_client = nh.serviceClient<interfaces::PatrolTrigger>("patrol_trigger");
+    g_config_id = nh.param<std::string>("config_id", "default");
+    g_loadconfig_client = nh.serviceClient<interfaces::SetConfig>("/loadconfig/set_config");
     g_ctx->battery_sub = nh.subscribe("/battery", 1, batteryCb);
     g_ctx->fault_sub = nh.subscribe("/fault", 1, faultCb);
     g_ctx->call_signal_sub = nh.subscribe("/call_signal", 1, callSignalCb);
     g_ctx->patrol_trigger_sub = nh.subscribe("/patrol_triggered", 1, patrolTriggerCb);
-    g_ctx->anomaly_client = nh.serviceClient<interfaces::DetectAnomaly>("detect_anomaly");
-    g_ctx->face_identify_client = nh.serviceClient<interfaces::FaceIdentify>("face_identify");
+    g_ctx->anomaly_client = nh.serviceClient<interfaces::DetectAnomaly>("/detect_anomaly");
+    g_ctx->face_identify_client = nh.serviceClient<interfaces::FaceIdentify>("/face_identify");
 
     BehaviorTreeFactory factory;
 
@@ -788,14 +873,6 @@ int main(int argc, char** argv)
         return std::make_unique<FaceIdentify>(name, config);
     });
 
-    factory.registerBuilder<EnqueueNurseCall>("EnqueueNurseCall", [](const std::string& name, const NodeConfig& config) {
-        return std::make_unique<EnqueueNurseCall>(name, config);
-    });
-
-    factory.registerBuilder<PopNurseCall>("PopNurseCall", [](const std::string& name, const NodeConfig& config) {
-        return std::make_unique<PopNurseCall>(name, config);
-    });
-
     factory.registerBuilder<ClearInteractionMode>("ClearInteractionMode", [](const std::string& name, const NodeConfig& config) {
         return std::make_unique<ClearInteractionMode>(name, config);
     });
@@ -812,6 +889,9 @@ int main(int argc, char** argv)
         return std::make_unique<NextPatrolPoint>(name, config);
     });
 
+    factory.registerBuilder<Detect_BedProcess>("Detect_BedProcess",[](const std::string& name, const NodeConfig& config){
+        return std::make_unique<Detect_BedProcess>(name,config);
+    });
 
     factory.registerBuilder<AlertUnfinishedOnce>("AlertUnfinishedOnce", [](const std::string& name, const NodeConfig& config) {
         return std::make_unique<AlertUnfinishedOnce>(name, config);
@@ -829,33 +909,75 @@ int main(int argc, char** argv)
         return std::make_unique<IsPatrolTriggered>(name, config);
     });
 
-    factory.registerBuilder<WaitNurseConnected>("WaitNurseConnected", [](const std::string& name, const NodeConfig& config) {
-        return std::make_unique<WaitNurseConnected>(name, config);
-    });
-
     factory.registerBuilder<LambdaAction>("LoadConfig", [](const std::string& name, const NodeConfig& config) {
         return std::make_unique<LambdaAction>(name, config, [](LambdaAction& node) {
             auto bb = node.blackboard();
+            if (!g_config_loaded)
+            {
+                const ros::Duration wait_interval(0.2);
+                const ros::Duration wait_timeout(5.0);
+                ros::Time start = ros::Time::now();
+                while (ros::ok() && !g_loadconfig_client.exists())
+                {
+                    if ((ros::Time::now() - start) > wait_timeout)
+                    {
+                        std::cout << "[WARN] LoadConfig service timeout\n";
+                        break;
+                    }
+                    wait_interval.sleep();
+                }
+                if (g_loadconfig_client.exists())
+                {
+                    interfaces::SetConfig srv;
+                    srv.request.config_id = g_config_id;
+                    if (g_loadconfig_client.call(srv) && srv.response.ok)
+                    {
+                        g_config_loaded = true;
+                    }
+                    else
+                    {
+                        std::cout << "[WARN] LoadConfig service failed\n";
+                    }
+                }
+                else
+                {
+                    std::cout << "[WARN] LoadConfig service not available\n";
+                }
+            }
+
+            std::string route_id = "route_a";
+            int cycles = 2;
+            std::vector<std::string> points = {"p0", "p1"};
+            ros::param::get("/loadconfig/patrol_route_id", route_id);
+            ros::param::get("/loadconfig/patrol_cycles", cycles);
+            if (!readPatrolPoints(points))
+            {
+                points = {"p0", "p1"};
+            }
+            if (cycles <= 0)
+            {
+                cycles = 1;
+            }
+            if (g_patrol_ctx)
+            {
+                g_patrol_ctx->route_id = route_id;
+                g_patrol_ctx->cycles_total = cycles;
+                g_patrol_ctx->cycles_remaining = cycles;
+                g_patrol_ctx->point_index = 0;
+                g_patrol_ctx->points = points;
+                g_patrol_ctx->complete = false;
+            }
             bb->set("config_loaded", true);
             bb->set("patrol_started", false);
-            bb->set("patrol_complete", false);
-            bb->set("beds_remaining", 0);
-            bb->set("bed_index", -1);
-            bb->set("bed_id", std::string("unknown"));
+            bb->set("bed_id", -1);
             bb->set("anomaly", false);
             bb->set("call_nurse", false);
             bb->set("nurse_connected", false);
             bb->set("call_signal", false);
             bb->set("person_id", -1);
-            bb->set("patrol_route_id", std::string("route_a"));
-            bb->set("patrol_cycles", 2);
-            bb->set("patrol_remaining", 0);
-            bb->set("patrol_index", 0);
             bb->set("unfinished_warned", false);
             if (g_root_bb)
             {
-                g_root_bb->set("nurse_call_pending", false);
-                g_root_bb->set("nurse_call_bed_id", std::string("unknown"));
                 g_root_bb->set("interaction_mode", std::string("none"));
             }
             std::cout << "[SET ] LoadConfig\n";
@@ -869,9 +991,12 @@ int main(int argc, char** argv)
             if (!getBool(bb, "patrol_started", false))
             {
                 bb->set("patrol_started", true);
-                bb->set("patrol_complete", false);
-                bb->set("patrol_points_remaining", 1);
-                bb->set("patrol_point", std::string("p1"));
+                if (g_patrol_ctx)
+                {
+                    g_patrol_ctx->complete = false;
+                    g_patrol_ctx->cycles_remaining = g_patrol_ctx->cycles_total;
+                    g_patrol_ctx->point_index = 0;
+                }
                 std::cout << "[SET ] ManagePatrolStart (init)\n";
             }
             return NodeStatus::SUCCESS;
@@ -888,84 +1013,6 @@ int main(int argc, char** argv)
     factory.registerBuilder<LambdaAction>("RestoreContext", [](const std::string& name, const NodeConfig& config) {
         return std::make_unique<LambdaAction>(name, config, [](LambdaAction&) {
             std::cout << "[ACT ] RestoreContext\n";
-            return NodeStatus::SUCCESS;
-        });
-    });
-
-    factory.registerBuilder<LambdaAction>("RequestAnomalyDetection", [](const std::string& name, const NodeConfig& config) {
-        return std::make_unique<LambdaAction>(name, config, [](LambdaAction& node) {
-            auto bb = node.blackboard();
-            bb->set("beds_remaining", 2);
-            bb->set("bed_index", -1);
-            std::cout << "[SET ] RequestAnomalyDetection (beds=2)\n";
-            return NodeStatus::SUCCESS;
-        });
-    });
-
-    factory.registerBuilder<LambdaAction>("AnomalyDetect", [](const std::string& name, const NodeConfig& config) {
-        return std::make_unique<LambdaAction>(name, config, [](LambdaAction& node) {
-            auto bb = node.blackboard();
-            std::string bed_id = getString(bb, "bed_id", "unknown");
-            if (bed_id.empty() || bed_id == "unknown")
-            {
-                if (g_root_bb)
-                {
-                    g_root_bb->set("interaction_mode", std::string("passive_wakeup"));
-                }
-                if (g_ctx && g_ctx->anomaly_client.exists())
-                {
-                    interfaces::DetectAnomaly srv;
-                    srv.request.mode = "scan";
-                    srv.request.bed_id = "";
-                    if (g_ctx->anomaly_client.call(srv))
-                    {
-                        std::vector<std::string> queue(srv.response.bed_ids.begin(), srv.response.bed_ids.end());
-                        bb->set("bed_queue", queue);
-                        bb->set("beds_remaining", static_cast<int>(queue.size()));
-                        bb->set("bed_index", -1);
-                        bb->set("bed_id", std::string("unknown"));
-                        std::cout << "[SET ] AnomalyDetect scan beds=" << queue.size() << "\n";
-                        return NodeStatus::SUCCESS;
-                    }
-                }
-                int beds = g_ctx ? g_ctx->beds_per_patrol : 2;
-                bb->set("bed_queue", std::vector<std::string>{});
-                bb->set("beds_remaining", beds);
-                bb->set("bed_index", -1);
-                bb->set("bed_id", std::string("unknown"));
-                std::cout << "[SET ] AnomalyDetect scan fallback beds=" << beds << "\n";
-                return NodeStatus::SUCCESS;
-            }
-            bool anomaly = false;
-            std::string details = "no service";
-
-            if (g_ctx && g_ctx->anomaly_client.exists())
-            {
-                interfaces::DetectAnomaly srv;
-                srv.request.mode = "bed";
-                srv.request.bed_id = bed_id;
-                if (g_ctx->anomaly_client.call(srv))
-                {
-                    anomaly = srv.response.is_anomaly;
-                    details = srv.response.details;
-                }
-                else
-                {
-                    details = "service call failed";
-                }
-            }
-            else
-            {
-                details = "service unavailable";
-            }
-
-            bb->set("anomaly", anomaly);
-            if (g_root_bb)
-            {
-                g_root_bb->set("interaction_mode", anomaly ? std::string("abnormal_alert") : std::string("passive_wakeup"));
-            }
-            std::cout << "[SET ] AnomalyDetect bed=" << bed_id << " anomaly=" << (anomaly ? "true" : "false")
-                      << " details=" << details << "\n";
             return NodeStatus::SUCCESS;
         });
     });
@@ -993,35 +1040,24 @@ int main(int argc, char** argv)
         });
     });
 
-    factory.registerBuilder<LambdaCondition>("ShouldCallNurse", [](const std::string& name, const NodeConfig& config) {
-        return std::make_unique<LambdaCondition>(name, config, [](LambdaCondition& node) {
-            auto bb = node.blackboard();
-            return getBool(bb, "call_nurse", false) ? NodeStatus::SUCCESS : NodeStatus::FAILURE;
-        });
-    });
-
-    factory.registerBuilder<LambdaCondition>("HasNurseCall", [](const std::string& name, const NodeConfig& config) {
-        return std::make_unique<LambdaCondition>(name, config, [](LambdaCondition&) {
-            if (getBool(g_root_bb.get(), "nurse_call_pending", false))
-            {
-                std::cout << "[COND] HasNurseCall=true\n";
-                return NodeStatus::SUCCESS;
-            }
-            return NodeStatus::FAILURE;
-        });
-    });
 
     factory.registerBuilder<LambdaCondition>("IsPatrolComplete", [](const std::string& name, const NodeConfig& config) {
         return std::make_unique<LambdaCondition>(name, config, [](LambdaCondition& node) {
-            auto bb = node.blackboard();
-            return getBool(bb, "patrol_complete", false) ? NodeStatus::SUCCESS : NodeStatus::FAILURE;
+            if (!g_patrol_ctx)
+            {
+                return NodeStatus::FAILURE;
+            }
+            return (g_patrol_ctx->cycles_remaining <= 0) ? NodeStatus::SUCCESS : NodeStatus::FAILURE;
         });
     });
 
     factory.registerBuilder<LambdaCondition>("IsPatrolIncomplete", [](const std::string& name, const NodeConfig& config) {
         return std::make_unique<LambdaCondition>(name, config, [](LambdaCondition& node) {
-            auto bb = node.blackboard();
-            return !getBool(bb, "patrol_complete", false) ? NodeStatus::SUCCESS : NodeStatus::FAILURE;
+            if (!g_patrol_ctx)
+            {
+                return NodeStatus::FAILURE;
+            }
+            return (g_patrol_ctx->cycles_remaining > 0) ? NodeStatus::SUCCESS : NodeStatus::FAILURE;
         });
     });
 
@@ -1082,7 +1118,7 @@ int main(int argc, char** argv)
         g_root_bb = Blackboard::create();
         auto tree = factory.createTreeFromFile("/home/val/BIH_ws/Medical_Embodied/src/behavior_tree/BH_xml/medical.xml", g_root_bb);
 
-        int max_ticks = nh.param("max_ticks", 200);
+        int max_ticks = nh.param("max_ticks", 400);
         constexpr int kTickHz = 20;
         constexpr auto kTickPeriod = std::chrono::milliseconds(1000 / kTickHz);
         std::cout << "[INFO] tick_rate=" << kTickHz << "Hz period=" << kTickPeriod.count() << "ms\n";

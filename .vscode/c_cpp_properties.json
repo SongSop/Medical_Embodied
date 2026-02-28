@@ -4,6 +4,7 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
+                "${workspaceFolder}/src/loadconfig/include",
                 "/home/val/Downloads/BehaviorTree.CPP/install/include",
                 "/opt/ros/noetic/include/",
                 "/home/val/BIH_ws/Medical_Embodied/devel/include"

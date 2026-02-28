@@ -8,14 +8,23 @@
             <input_port name="fault_type"/>
         </Action>
         <Action ID="AlertUnfinishedOnce" editable="true"/>
-        <Action ID="AnomalyDetect" editable="true"/>
         <Action ID="CallDutyNurse" editable="true">
             <input_port name="bed_id"/>
+            <input_port name="summary"/>
+            <output_port name="need_call_nurse"/>
         </Action>
         <Action ID="ClearInteractionMode" editable="true"/>
         <Action ID="ClearPatrolTrigger" editable="true"/>
+        <Action ID="Detect_BedProcess" editable="true">
+            <input_port name="mode"/>
+            <input_port name="patrol_bed_id"/>
+            <output_port name="bed_queue"/>
+            <output_port name="interaction_mode"/>
+            <output_port name="context"/>
+        </Action>
         <Action ID="EnqueueNurseCall" editable="true">
             <input_port name="bed_id"/>
+            <input_port name="need_call_nurse"/>
         </Action>
         <Action ID="FaceIdentify" editable="true">
             <output_port name="person_id"/>
@@ -39,7 +48,9 @@
         <Action ID="LLMInteraction" editable="true">
             <input_port name="mode"/>
             <input_port name="person_id"/>
+            <input_port name="context"/>
             <output_port name="need_call_nurse"/>
+            <output_port name="summary"/>
         </Action>
         <Action ID="LoadConfig" editable="true"/>
         <Action ID="LoadPatrolPlan" editable="true">
@@ -60,6 +71,7 @@
         <Action ID="RestoreContext" editable="true"/>
         <Action ID="SaveContext" editable="true"/>
         <Action ID="SelectNextBed" editable="true">
+            <input_port name="bed_queue"/>
             <output_port name="bed_id"/>
         </Action>
         <Action ID="SetInteractionMode" editable="true">

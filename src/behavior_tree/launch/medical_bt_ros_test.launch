@@ -1,7 +1,12 @@
 <launch>
+  <node pkg="loadconfig" type="loadconfig_server.py" name="loadconfig_server" output="screen" />
+  
+  
   <node pkg="behavior_tree" type="ros_bt_runner" name="ros_bt_runner" output="screen">
-    <param name="max_ticks" value="140" />
+    <param name="max_ticks" value="1000" />
   </node>
+
+
   <node pkg="behavior_tree" type="medical_bt_ros_test_driver.py" name="medical_bt_ros_test_driver" output="screen">
     <param name="start_delay" value="1.0" />
     <param name="ticks" value="140" />

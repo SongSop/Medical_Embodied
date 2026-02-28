@@ -4,6 +4,10 @@ import actionlib
 
 from interfaces.msg import NavigateAction, NavigateResult, NavigateFeedback, ActionStatus
 
+NAV_GOAL = 0
+NAV_STOP = 1
+NAV_DOCK = 2
+
 
 class NavigateMockServer:
     def __init__(self):
@@ -20,13 +24,13 @@ class NavigateMockServer:
         result = NavigateResult()
         feedback = NavigateFeedback()
 
-        if goal.target in ("bad", "no_path"):
+        if goal.target_index < -10:
             result.status.status = ActionStatus.NO_PATH
             result.message = "no path"
             self._server.set_aborted(result, result.message)
             return
 
-        steps = 5 if goal.nav_type == "charge" else 3
+        steps = 5 if goal.nav_type == NAV_DOCK else 3
         rate = rospy.Rate(10)
         for i in range(steps):
             if self._server.is_preempt_requested():

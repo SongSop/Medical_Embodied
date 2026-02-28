@@ -17,7 +17,8 @@ STATUS_NAMES = {
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--bed-id", default="bed_0")
+    parser.add_argument("--bed-ids", default="0")
+    parser.add_argument("--summarys", default="")
     parser.add_argument("--timeout", type=float, default=5.0)
     args = parser.parse_args()
 
@@ -27,7 +28,21 @@ def main():
         rospy.logerr("call_nurse action server not available")
         return 1
 
-    goal = CallNurseGoal(bed_id=args.bed_id)
+    bed_ids = []
+    for item in args.bed_ids.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            bed_ids.append(int(item))
+        except ValueError:
+            bed_ids.append(0)
+
+    summarys = []
+    if args.summarys:
+        summarys = [s.strip() for s in args.summarys.split(",")]
+
+    goal = CallNurseGoal(bed_ids=bed_ids, summarys=summarys)
     client.send_goal(goal)
     client.wait_for_result(rospy.Duration(args.timeout))
     result = client.get_result()

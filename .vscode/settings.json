@@ -2,5 +2,8 @@
     "python.analysis.extraPaths": [
         "/home/val/BIH_ws/Medical_Embodied/devel/lib/python3/dist-packages/",
     ],
-    "python.analysis.autoSearchPaths": false
+    "python.analysis.autoSearchPaths": false,
+    "files.associations": {
+        "functional": "cpp"
+    }
 }

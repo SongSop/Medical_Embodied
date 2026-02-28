@@ -1,17 +1,133 @@
 #include "behaviortree_cpp/bt_factory.h"
 #include "behaviortree_cpp/loggers/groot2_publisher.h"
 #include <chrono>
+#include <cctype>
+#include <cstdlib>
 #include <functional>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
 
 using namespace BT;
 
+namespace BT {
+template <>
+inline int convertFromString(StringView str)
+{
+    std::string s(str.data(), str.size());
+    if (s == "current")
+    {
+        return -1;
+    }
+    if (s == "charge_dock")
+    {
+        return -2;
+    }
+    if (!s.empty() && s[0] == 'p')
+    {
+        bool ok = true;
+        for (size_t i = 1; i < s.size(); ++i)
+        {
+            if (!std::isdigit(static_cast<unsigned char>(s[i])))
+            {
+                ok = false;
+                break;
+            }
+        }
+        if (ok && s.size() > 1)
+        {
+            return std::stoi(s.substr(1));
+        }
+    }
+    char* end = nullptr;
+    long v = std::strtol(s.c_str(), &end, 10);
+    if (end && *end == '\0')
+    {
+        return static_cast<int>(v);
+    }
+    throw RuntimeError("cannot convert to int: ", s);
+}
+} // namespace BT
+
 namespace {
 
 Blackboard::Ptr g_root_bb;
+
+int navTypeFromString(const std::string& s)
+{
+    if (!s.empty())
+    {
+        char* end = nullptr;
+        long v = std::strtol(s.c_str(), &end, 10);
+        if (end && *end == '\0')
+        {
+            return static_cast<int>(v);
+        }
+    }
+    if (s == "goal")
+    {
+        return 0;
+    }
+    if (s == "stop")
+    {
+        return 1;
+    }
+    if (s == "dock")
+    {
+        return 2;
+    }
+    return 1;
+}
+
+int detectModeFromString(const std::string& s)
+{
+    if (!s.empty())
+    {
+        char* end = nullptr;
+        long v = std::strtol(s.c_str(), &end, 10);
+        if (end && *end == '\0')
+        {
+            return static_cast<int>(v);
+        }
+    }
+    if (s == "area")
+    {
+        return 0;
+    }
+    if (s == "bed")
+    {
+        return 1;
+    }
+    return 0;
+}
+
+int interactionModeFromString(const std::string& s)
+{
+    if (!s.empty())
+    {
+        char* end = nullptr;
+        long v = std::strtol(s.c_str(), &end, 10);
+        if (end && *end == '\0')
+        {
+            return static_cast<int>(v);
+        }
+    }
+    if (s == "alert")
+    {
+        return 0;
+    }
+    if (s == "passive")
+    {
+        return 1;
+    }
+    if (s == "interrupt")
+    {
+        return 2;
+    }
+    return 1;
+}
 
 struct Metrics
 {
@@ -109,14 +225,15 @@ public:
 
     static PortsList providedPorts()
     {
-        return { InputPort<std::string>("target"), InputPort<std::string>("nav_type") };
+        return { InputPort<int>("target"), InputPort<std::string>("nav_type") };
     }
 
     NodeStatus onStart() override
     {
         ticks_ = 0;
-        auto target = getInput<std::string>("target").value_or("unknown");
-        auto nav_type = getInput<std::string>("nav_type").value_or("goal");
+        auto target = getInput<int>("target").value_or(-1);
+        auto nav_type_str = getInput<std::string>("nav_type").value_or("stop");
+        int nav_type = navTypeFromString(nav_type_str);
         g_metrics.nav_start += 1;
         std::cout << "[START] NavgateTo target=" << target << " type=" << nav_type << "\n";
         return NodeStatus::RUNNING;
@@ -152,15 +269,22 @@ public:
 
     static PortsList providedPorts()
     {
-        return { InputPort<std::string>("mode"), InputPort<int>("person_id"), OutputPort<bool>("need_call_nurse") };
+        return { InputPort<std::string>("mode"),
+                 InputPort<int>("person_id"),
+                 InputPort<std::string>("context"),
+                 OutputPort<bool>("need_call_nurse"),
+                 OutputPort<std::string>("summary") };
     }
 
     NodeStatus onStart() override
     {
         ticks_ = 0;
-        mode_ = getInput<std::string>("mode").value_or("unknown");
+        auto mode_str = getInput<std::string>("mode").value_or("passive");
+        mode_ = interactionModeFromString(mode_str);
         person_id_ = getInput<int>("person_id").value_or(-1);
+        context_ = getInput<std::string>("context").value_or("");
         setOutput("need_call_nurse", false);
+        setOutput("summary", std::string("pending"));
         std::cout << "[START] LLMInteraction mode=" << mode_ << " person_id=" << person_id_ << "\n";
         return NodeStatus::RUNNING;
     }
@@ -171,26 +295,19 @@ public:
         std::cout << "[RUN ] LLMInteraction step " << ticks_ << "/" << ticks_required_ << "\n";
         if (ticks_ >= ticks_required_)
         {
-            bool need_call_nurse = false;
-            if (mode_ == "abnormal_alert")
-            {
-                need_call_nurse = (person_id_ % 2 == 1);
-            }
+            bool need_call_nurse = (mode_ == 0);
             setOutput("need_call_nurse", need_call_nurse);
-            if (config().blackboard)
-            {
-                config().blackboard->set("call_nurse", need_call_nurse);
-            }
+            setOutput("summary", context_.empty() ? std::string("mock_summary") : context_);
             g_metrics.llm_done += 1;
-            if (mode_ == "call_response")
+            if (mode_ == 2)
             {
                 g_metrics.llm_call_response += 1;
             }
-            else if (mode_ == "abnormal_alert")
+            else if (mode_ == 0)
             {
                 g_metrics.llm_abnormal += 1;
             }
-            else if (mode_ == "passive_wakeup")
+            else if (mode_ == 1)
             {
                 g_metrics.llm_passive += 1;
             }
@@ -209,7 +326,8 @@ public:
 private:
     int ticks_required_ = 3;
     int ticks_ = 0;
-    std::string mode_;
+    int mode_ = 1;
+    std::string context_;
     int person_id_ = -1;
 };
 
@@ -218,15 +336,19 @@ class SelectNextBed : public SyncActionNode
 public:
     SelectNextBed(const std::string& name, const NodeConfig& config) : SyncActionNode(name, config) {}
 
-    static PortsList providedPorts() { return { OutputPort<std::string>("bed_id") }; }
+    static PortsList providedPorts()
+    {
+        return { InputPort<std::vector<int>>("bed_queue"),
+                 OutputPort<int>("bed_id") };
+    }
 
     NodeStatus tick() override
     {
         auto bb = config().blackboard;
-        std::vector<std::string> queue;
-        if (bb->get("bed_queue", queue) && !queue.empty())
+        std::vector<int> queue = getInput<std::vector<int>>("bed_queue").value();
+        if (!queue.empty())
         {
-            std::string bed_id = queue.front();
+            int bed_id = queue.front();
             queue.erase(queue.begin());
             bb->set("bed_queue", queue);
             bb->set("beds_remaining", static_cast<int>(queue.size()));
@@ -235,20 +357,8 @@ public:
             std::cout << "[SET ] SelectNextBed -> bed_id=" << bed_id << " remaining=" << queue.size() << "\n";
             return NodeStatus::SUCCESS;
         }
-        int remaining = getInt(bb, "beds_remaining", 0);
-        int idx = getInt(bb, "bed_index", -1) + 1;
-        if (remaining > 0)
-        {
-            bb->set("beds_remaining", remaining - 1);
-            bb->set("bed_index", idx);
-            std::string bed_id = "bed_" + std::to_string(idx);
-            bb->set("bed_id", bed_id);
-            setOutput("bed_id", bed_id);
-            std::cout << "[SET ] SelectNextBed -> bed_id=" << bed_id << " remaining=" << (remaining - 1) << "\n";
-            return NodeStatus::SUCCESS;
-        }
-        bb->set("bed_id", std::string("unknown"));
-        setOutput("bed_id", std::string("unknown"));
+        bb->set("bed_id", -1);
+        setOutput("bed_id", -1);
         return NodeStatus::FAILURE;
     }
 };
@@ -320,13 +430,20 @@ class CallDutyNurse : public SyncActionNode
 public:
     CallDutyNurse(const std::string& name, const NodeConfig& config) : SyncActionNode(name, config) {}
 
-    static PortsList providedPorts() { return { InputPort<std::string>("bed_id") }; }
+    static PortsList providedPorts()
+    {
+        return { InputPort<int>("bed_id"),
+                 InputPort<std::string>("summary"),
+                 OutputPort<bool>("need_call_nurse") };
+    }
 
     NodeStatus tick() override
     {
-        std::string bed_id = getInput<std::string>("bed_id").value_or("unknown");
+        int bed_id = getInput<int>("bed_id").value_or(-1);
+        auto summary = getInput<std::string>("summary").value_or("unknown");
         g_metrics.call_duty_nurse += 1;
-        std::cout << "[ACT ] CallDutyNurse bed_id=" << bed_id << "\n";
+        setOutput("need_call_nurse", false);
+        std::cout << "[ACT ] CallDutyNurse bed_id=" << bed_id << " summary=" << summary << "\n";
         return NodeStatus::SUCCESS;
     }
 };
@@ -358,32 +475,28 @@ public:
 
     NodeStatus tick() override
     {
-        auto mode = getInput<std::string>("mode").value_or("unknown");
-        std::string current = getString(g_root_bb.get(), "interaction_mode", "none");
-        auto norm = [](std::string s) {
-            s.erase(std::remove_if(s.begin(), s.end(), ::isspace), s.end());
-            if (!s.empty() && s.front() == '[') s.erase(s.begin());
-            if (!s.empty() && s.back() == ']') s.pop_back();
-            return s;
-        };
-        std::string list = norm(mode);
-        if (list.find(',') == std::string::npos)
+        auto mode = getInput<std::string>("mode").value_or("none");
+        return (mode == "passive" || mode == "alert") ? NodeStatus::SUCCESS : NodeStatus::FAILURE;
+    }
+};
+
+class HasNextBed : public ConditionNode
+{
+public:
+    HasNextBed(const std::string& name, const NodeConfig& config) : ConditionNode(name, config) {}
+
+    static PortsList providedPorts() { return {}; }
+
+    NodeStatus tick() override
+    {
+        auto bb = config().blackboard;
+        std::vector<int> queue;
+        if (bb->get("bed_queue", queue) && !queue.empty())
         {
-            return (current == list) ? NodeStatus::SUCCESS : NodeStatus::FAILURE;
+            return NodeStatus::SUCCESS;
         }
-        size_t start = 0;
-        while (start < list.size())
-        {
-            size_t end = list.find(',', start);
-            if (end == std::string::npos) end = list.size();
-            std::string item = list.substr(start, end - start);
-            if (current == item)
-            {
-                return NodeStatus::SUCCESS;
-            }
-            start = end + 1;
-        }
-        return NodeStatus::FAILURE;
+        int remaining = getInt(bb, "beds_remaining", 0);
+        return remaining > 0 ? NodeStatus::SUCCESS : NodeStatus::FAILURE;
     }
 };
 
@@ -456,6 +569,44 @@ public:
             bb->set("unfinished_warned", true);
             std::cout << "[ACT ] AlertUnfinishedOnce\n";
         }
+        return NodeStatus::SUCCESS;
+    }
+};
+
+class Detect_BedProcess : public SyncActionNode
+{
+public:
+    Detect_BedProcess(const std::string& name, const NodeConfig& config) : SyncActionNode(name, config) {}
+
+    static PortsList providedPorts()
+    {
+        return { InputPort<std::string>("mode"),
+                 InputPort<int>("bed_id"),
+                 OutputPort<std::vector<int>>("bed_queue"),
+                 OutputPort<std::string>("interaction_mode"),
+                 OutputPort<std::string>("context") };
+    }
+
+    NodeStatus tick() override
+    {
+        auto mode = getInput<std::string>("mode").value_or("area");
+        int scan_mode = detectModeFromString(mode);
+        int bed_id = getInput<int>("bed_id").value_or(-1);
+
+        if (scan_mode == 1)
+        {
+            bool anomaly = (bed_id >= 0) ? (bed_id % 2 == 0) : false;
+            setOutput<std::string>("interaction_mode", anomaly ? "alert" : "passive");
+            setOutput<std::string>("context", anomaly ? "anomaly" : "normal");
+            g_metrics.anomaly_bed += 1;
+            std::cout << "[SET ] AnomalyDetect bed=" << bed_id << " anomaly=" << (anomaly ? "true" : "false") << "\n";
+            return NodeStatus::SUCCESS;
+        }
+
+        std::vector<int> queue = {1, 0};
+        setOutput("bed_queue", queue);
+        g_metrics.anomaly_scan += 1;
+        std::cout << "[SET ] AnomalyDetect scan beds=2\n";
         return NodeStatus::SUCCESS;
     }
 };
@@ -644,6 +795,10 @@ int main()
         return std::make_unique<IsInteractionMode>(name, config);
     });
 
+    factory.registerBuilder<HasNextBed>("HasNextBed", [](const std::string& name, const NodeConfig& config) {
+        return std::make_unique<HasNextBed>(name, config);
+    });
+
     factory.registerBuilder<LoadPatrolPlan>("LoadPatrolPlan", [](const std::string& name, const NodeConfig& config) {
         return std::make_unique<LoadPatrolPlan>(name, config);
     });
@@ -680,7 +835,7 @@ int main()
             bb->set("patrol_complete", false);
             bb->set("beds_remaining", 0);
             bb->set("bed_index", -1);
-            bb->set("bed_id", std::string("unknown"));
+            bb->set("bed_id", -1);
             bb->set("anomaly", false);
             bb->set("call_nurse", false);
             bb->set("nurse_connected", false);
@@ -746,35 +901,8 @@ int main()
         });
     });
 
-    factory.registerBuilder<LambdaAction>("AnomalyDetect", [](const std::string& name, const NodeConfig& config) {
-        return std::make_unique<LambdaAction>(name, config, [](LambdaAction& node) {
-            auto bb = node.blackboard();
-            std::string bed_id = getString(bb, "bed_id", "unknown");
-            if (bed_id.empty() || bed_id == "unknown")
-            {
-                if (g_root_bb)
-                {
-                    g_root_bb->set("interaction_mode", std::string("passive_wakeup"));
-                }
-                std::vector<std::string> queue = {"bed_1", "bed_0"};
-                bb->set("bed_queue", queue);
-                bb->set("beds_remaining", static_cast<int>(queue.size()));
-                bb->set("bed_index", -1);
-                bb->set("bed_id", std::string("unknown"));
-                g_metrics.anomaly_scan += 1;
-                std::cout << "[SET ] AnomalyDetect scan beds=[bed_1,bed_0]\n";
-                return NodeStatus::SUCCESS;
-            }
-            bool anomaly = bed_id.size() >= 1 && bed_id.back() == '0';
-            bb->set("anomaly", anomaly);
-            if (g_root_bb)
-            {
-                g_root_bb->set("interaction_mode", anomaly ? std::string("abnormal_alert") : std::string("passive_wakeup"));
-            }
-            g_metrics.anomaly_bed += 1;
-            std::cout << "[SET ] AnomalyDetect bed=" << bed_id << " anomaly=" << (anomaly ? "true" : "false") << "\n";
-            return NodeStatus::SUCCESS;
-        });
+    factory.registerBuilder<Detect_BedProcess>("Detect_BedProcess", [](const std::string& name, const NodeConfig& config) {
+        return std::make_unique<Detect_BedProcess>(name, config);
     });
 
     factory.registerBuilder<LambdaAction>("AlertAbnormal", [](const std::string& name, const NodeConfig& config) {
@@ -907,7 +1035,15 @@ int main()
 
         g_root_bb = Blackboard::create();
         auto tree = factory.createTreeFromFile("/home/val/BIH_ws/Medical_Embodied/src/behavior_tree/BH_xml/medical.xml", g_root_bb);
-        Groot2Publisher publisher(tree,1667);
+        std::unique_ptr<Groot2Publisher> publisher;
+        try
+        {
+            publisher = std::make_unique<Groot2Publisher>(tree, 1667);
+        }
+        catch (const std::exception& e)
+        {
+            std::cout << "[WARN] Groot2Publisher disabled: " << e.what() << "\n";
+        }
         auto bb = tree.rootBlackboard();
 
         for (int tick = 0; tick < 140; ++tick)
@@ -943,7 +1079,7 @@ int main()
                 if (tick == 5)
                 {
                     std::cout << "\n[TEST] Section: call signal response (ticks 5-8).\n";
-                    std::cout << "[TEST] 目标: 触发呼叫响应，LLMInteraction 模式为 call_response。\n";
+                    std::cout << "[TEST] 目标: 触发呼叫响应，LLMInteraction 模式为 interrupt。\n";
                     std::cout << "[TEST] 结果: (区段结束后给出)\n";
                     bb->set("section_call_signal_m", g_metrics.llm_call_response);
                 }
@@ -1061,25 +1197,6 @@ int main()
                 std::cout << "[TEST] 结果: " << (delta >= 1 ? "PASS" : "FAIL")
                           << " (wait_charge_start+=" << delta << ")\n";
             }
-            if (tick == 50 && g_root_bb)
-            {
-                g_root_bb->set("nurse_call_pending", true);
-                g_root_bb->set("nurse_call_bed_id", std::string("bed_test"));
-                std::cout << "\n[TEST] Section: nurse call queue handling.\n";
-                std::cout << "[TEST] 目标: 处理护士呼叫队列并等待接通。\n";
-                std::cout << "[TEST] 结果: (区段结束后给出)\n";
-                bb->set("section_nurse_m", g_metrics.call_duty_nurse);
-                std::cout << "[SIM ] nurse_call_pending=true (bed_test)\n";
-            }
-            if (tick == 54)
-            {
-                bb->set("nurse_connected", true);
-                std::cout << "[SIM ] nurse_connected=true\n";
-                int start = getInt(bb, "section_nurse_m", 0);
-                int delta = g_metrics.call_duty_nurse - start;
-                std::cout << "[TEST] 结果: " << (delta >= 1 ? "PASS" : "FAIL")
-                          << " (call_duty_nurse+=" << delta << ")\n";
-            }
             if (tick == 45 && g_root_bb)
             {
                 g_root_bb->set("patrol_triggered", true);
@@ -1089,6 +1206,10 @@ int main()
                 std::cout << "[TEST] 结果: (区段结束后给出)\n";
                 bb->set("section_patrol_m", g_metrics.patrol_point);
                 std::cout << "[SIM ] patrol_triggered=true (cycles=2)\n";
+                std::cout << "\n[TEST] Section: nurse call handling (during patrol).\n";
+                std::cout << "[TEST] 目标: 异常告警触发后产生呼叫护士。\n";
+                std::cout << "[TEST] 结果: (区段结束后给出)\n";
+                bb->set("section_nurse_m", g_metrics.call_duty_nurse);
             }
             if (tick == 61)
             {
@@ -1097,6 +1218,11 @@ int main()
                 int delta = g_metrics.patrol_point - start;
                 std::cout << "[TEST] 结果: " << (delta >= 1 ? "PASS" : "FAIL")
                           << " (patrol_point+=" << delta << ")\n";
+                std::cout << "\n[TEST] Section end: nurse call handling.\n";
+                int nstart = getInt(bb, "section_nurse_m", 0);
+                int ndelta = g_metrics.call_duty_nurse - nstart;
+                std::cout << "[TEST] 结果: " << (ndelta >= 1 ? "PASS" : "FAIL")
+                          << " (call_duty_nurse+=" << ndelta << ")\n";
             }
             if (tick == 90 && g_root_bb)
             {
