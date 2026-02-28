@@ -50,3 +50,14 @@ qtcreator-*
 
 # Catkin custom files
 CATKIN_IGNORE
+
+# Ignore all images in dataset
+src/monitor/face_database/**/*.jpg
+src/monitor/face_database/**/*.jpeg
+src/monitor/face_database/**/*.png
+src/monitor/face_database/**/*.bmp
+src/monitor/face_database/**/*.gif
+src/monitor/face_database/**/*.webp
+
+# Ignore face recognition guide
+FACE_RECOGNITION_GUIDE.md
