@@ -32,21 +32,12 @@
 
 1. 启动人脸识别服务：
    ```bash
-   roslaunch behavior_tree face_identify.launch
+   roslaunch monitor face_identify.launch
    ```
 
 2. 测试服务（另开一个终端）：
    ```bash
-   rosservice call /face_identify
-   ```
-
-3. 查看识别结果和调试图像：
-   ```bash
-   rostopic echo /face_identify/debug_image
-   ```
-   或者使用 rqt_image_view：
-   ```bash
-   rqt_image_view /face_identify/debug_image
+   rosservice call /face_identify "{}"
    ```
 
 ## 注意事项

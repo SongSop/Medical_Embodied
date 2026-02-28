@@ -27,9 +27,9 @@ class FaceIdentifyServer:
         self.max_recognition_attempts = rospy.get_param('~max_recognition_attempts', 10)
         self.recognition_timeout = rospy.get_param('~recognition_timeout', 10.0)
 
-        # 人脸数据库路径
+        # 人脸数据库路径（相对路径，相对于 monitor 包）
         self.face_database_path = rospy.get_param('~face_database_path',
-            '/home/song/medical_rb/Medical_Embodied/src/monitor/face_database')
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), '../face_database'))
 
         # 已知人脸编码数据库
         self.known_face_encodings = []
