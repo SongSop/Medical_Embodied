@@ -2,7 +2,12 @@
 # -*- coding: utf-8 -*-
 """
 人脸识别服务节点
-使用 face_recognition 包和 USB 摄像头实现真实的人脸识别
+使用 face_recognition 包和订阅相机话题实现真实的人脸识别
+
+架构改进:
+- 不再直接打开摄像头
+- 订阅独立相机节点发布的图像话题
+- 符合ROS发布/订阅架构规范
 """
 
 import rospy
@@ -20,10 +25,10 @@ class FaceIdentifyServer:
     def __init__(self):
         rospy.init_node('face_identify_server', anonymous=True)
 
-        # 摄像头配置
-        self.camera_id = rospy.get_param('~camera_id', 0)
-        self.frame_width = rospy.get_param('~frame_width', 640)
-        self.frame_height = rospy.get_param('~frame_height', 480)
+        # 相机话题配置
+        self.rgb_topic = rospy.get_param('~rgb_topic', '/camera/rgb/image_raw')
+
+        # 识别配置
         self.max_recognition_attempts = rospy.get_param('~max_recognition_attempts', 10)
         self.recognition_timeout = rospy.get_param('~recognition_timeout', 10.0)
 
@@ -41,19 +46,52 @@ class FaceIdentifyServer:
         # 发布调试图像
         self.debug_image_pub = rospy.Publisher('/face_identify/debug_image', Image, queue_size=10)
 
+        # 存储最新的相机帧
+        self.latest_frame = None
+
         # 加载人脸数据库
         self.load_face_database()
 
-        # 打开摄像头
-        self.cap = None
-        self.open_camera()
+        # 订阅相机话题
+        self.camera_sub = rospy.Subscriber(self.rgb_topic, Image, self.camera_callback)
+        rospy.loginfo('[FaceIdentify] 订阅相机话题: %s', self.rgb_topic)
 
         # 创建服务
         self.service = rospy.Service('face_identify', FaceIdentify, self.handle_face_identify)
 
-        rospy.loginfo('[FaceIdentify] 人脸识别服务器已启动')
-        rospy.loginfo('[FaceIdentify] 摄像头ID: %d, 分辨率: %dx%d', self.camera_id, self.frame_width, self.frame_height)
+        rospy.loginfo('[FaceIdentify] 人脸识别服务器已启动 (订阅相机话题模式)')
         rospy.loginfo('[FaceIdentify] 已加载 %d 张人脸', len(self.known_face_encodings))
+
+    def camera_callback(self, msg):
+        """相机话题回调，存储最新帧"""
+        try:
+            self.latest_frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        except Exception as e:
+            rospy.logerr('[FaceIdentify] 图像转换失败: %s', str(e))
+
+    def get_latest_frame(self, timeout=1.0):
+        """
+        获取最新的相机帧
+
+        参数:
+            timeout: 超时时间(秒)
+
+        返回:
+            numpy.ndarray: 图像帧，超时返回 None
+        """
+        if self.latest_frame is not None:
+            return self.latest_frame
+
+        # 等待新帧
+        start_time = rospy.Time.now()
+        rate = rospy.Rate(30)
+        while (rospy.Time.now() - start_time).to_sec() < timeout:
+            if self.latest_frame is not None:
+                return self.latest_frame
+            rate.sleep()
+
+        rospy.logwarn('[FaceIdentify] 等待相机帧超时')
+        return None
 
     def load_face_database(self):
         """加载已知人脸数据库"""
@@ -93,48 +131,6 @@ class FaceIdentifyServer:
 
                 except Exception as e:
                     rospy.logerr('[FaceIdentify] 加载人脸失败 %s: %s', filename, str(e))
-
-    def open_camera(self):
-        """打开摄像头"""
-        try:
-            self.cap = cv2.VideoCapture(self.camera_id)
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_width)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_height)
-
-            if not self.cap.isOpened():
-                rospy.logerr('[FaceIdentify] 无法打开摄像头 %d', self.camera_id)
-                return False
-
-            # 测试读取一帧
-            ret, frame = self.cap.read()
-            if not ret or frame is None:
-                rospy.logerr('[FaceIdentify] 无法从摄像头读取图像')
-                self.cap.release()
-                return False
-
-            rospy.loginfo('[FaceIdentify] 摄像头已成功打开')
-            return True
-
-        except Exception as e:
-            rospy.logerr('[FaceIdentify] 打开摄像头异常: %s', str(e))
-            return False
-
-    def capture_frame(self):
-        """从摄像头捕获一帧图像"""
-        if self.cap is None or not self.cap.isOpened():
-            rospy.logerr('[FaceIdentify] 摄像头未打开')
-            return None
-
-        # 清空摄像头缓冲区，丢弃旧帧（最多丢弃5帧）
-        for _ in range(5):
-            self.cap.grab()
-
-        ret, frame = self.cap.read()
-        if not ret or frame is None:
-            rospy.logerr('[FaceIdentify] 无法捕获图像')
-            return None
-
-        return frame
 
     def recognize_face(self, frame):
         """
@@ -214,16 +210,9 @@ class FaceIdentifyServer:
         """
         处理人脸识别请求
         关键：无论任何情况都返回 success=True，避免行为树卡死
+        从订阅的相机话题获取图像
         """
         rospy.loginfo('[FaceIdentify] ========== 收到新的人脸识别请求 ==========')
-
-        # 如果摄像头未打开，尝试重新打开
-        if self.cap is None or not self.cap.isOpened():
-            rospy.logwarn('[FaceIdentify] 摄像头未打开，尝试重新打开')
-            if not self.open_camera():
-                # 摄像头打开失败，仍返回 success=True 但 person_id=-1
-                rospy.logwarn('[FaceIdentify] 摄像头打开失败，返回默认值继续流程')
-                return FaceIdentifyResponse(success=True, person_id=-1, confidence=0.0, message="摄像头打开失败")
 
         start_time = time.time()
         person_id = -1
@@ -234,59 +223,55 @@ class FaceIdentifyServer:
         for attempt in range(self.max_recognition_attempts):
             # 检查超时
             if time.time() - start_time > self.recognition_timeout:
-                rospy.logwarn('[FaceIdentify] 识别超时 (%.1f秒)，返回默认值继续流程', self.recognition_timeout)
+                rospy.logwarn('[FaceIdentify] 识别超时 (%.1f秒)', self.recognition_timeout)
                 break
 
             rospy.loginfo('[FaceIdentify] 识别尝试 %d/%d', attempt + 1, self.max_recognition_attempts)
 
-            # 捕获图像
-            frame = self.capture_frame()
+            # 从相机话题获取最新帧
+            frame = self.get_latest_frame(timeout=1.0)
             if frame is None:
-                rospy.logwarn('[FaceIdentify] 无法捕获图像')
+                rospy.logwarn('[FaceIdentify] 无法获取相机帧')
                 time.sleep(0.3)
                 continue
 
-            rospy.loginfo('[FaceIdentify] 成功捕获图像帧，开始识别人脸')
+            rospy.loginfo('[FaceIdentify] 成功获取图像帧，开始识别人脸')
 
             # 识别人脸
-            person_id, confidence, last_debug_image = self.recognize_face(frame)
+            person_id, confidence, debug_image = self.recognize_face(frame)
+            last_debug_image = debug_image
 
-            # 如果识别成功（person_id > -1），返回结果
-            if person_id > -1:
-                rospy.loginfo('[FaceIdentify] 识别成功，返回 person_id=%d', person_id)
-                return FaceIdentifyResponse(
-                    success=True,
-                    person_id=person_id,
-                    confidence=confidence,
-                    message=f"识别成功: person_id={person_id}"
-                )
+            # 发布调试图像
+            if last_debug_image is not None:
+                try:
+                    ros_image = self.bridge.cv2_to_imgmsg(last_debug_image, encoding='bgr8')
+                    self.debug_image_pub.publish(ros_image)
+                except Exception as e:
+                    rospy.logwarn('[FaceIdentify] 发布调试图像失败: %s', str(e))
 
-            # 等待一小段时间再试
+            # 如果识别成功（person_id != -1），立即返回
+            if person_id != -1:
+                message = f"识别成功: ID={person_id}, 置信度={confidence:.1f}%"
+                rospy.loginfo('[FaceIdentify] %s', message)
+                return FaceIdentifyResponse(success=True, person_id=person_id,
+                                             confidence=confidence, message=message)
+
+            # 如果未识别到人脸，等待一段时间再试
             time.sleep(0.3)
 
-        # 发布最后一张调试图像
+        # 所有尝试都失败
+        message = f"识别失败 (尝试{self.max_recognition_attempts}次)"
+        rospy.logwarn('[FaceIdentify] %s', message)
+
+        # 发布最后一次调试图像
         if last_debug_image is not None:
             try:
-                debug_msg = self.bridge.cv2_to_imgmsg(last_debug_image, encoding="bgr8")
-                self.debug_image_pub.publish(debug_msg)
+                ros_image = self.bridge.cv2_to_imgmsg(last_debug_image, encoding='bgr8')
+                self.debug_image_pub.publish(ros_image)
             except Exception as e:
                 rospy.logwarn('[FaceIdentify] 发布调试图像失败: %s', str(e))
 
-        # 所有尝试都失败或超时，返回 success=True, person_id=-1 让行为树继续执行
-        rospy.loginfo('[FaceIdentify] 未识别到已知人脸，返回 person_id=-1 继续流程')
-        return FaceIdentifyResponse(
-            success=True,
-            person_id=-1,
-            confidence=0.0,
-            message="未识别到已知人脸"
-        )
-
-    def shutdown(self):
-        """关闭节点，释放资源"""
-        rospy.loginfo('[FaceIdentify] 正在关闭...')
-        if self.cap is not None and self.cap.isOpened():
-            self.cap.release()
-            rospy.loginfo('[FaceIdentify] 摄像头已关闭')
+        return FaceIdentifyResponse(success=True, person_id=-1, confidence=0.0, message=message)
 
 
 def main():

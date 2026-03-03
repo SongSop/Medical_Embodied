@@ -1,15 +1,16 @@
 <launch>
+    <!-- 相机话题配置 (需要先启动 camera_node) -->
+    <arg name="rgb_topic" default="/camera/rgb/image_raw" doc="相机RGB图像话题"/>
+
     <!-- 人脸识别服务 -->
     <node name="face_identify_server" pkg="monitor" type="face_identify_server.py" output="screen">
-        <!-- 摄像头配置 -->
-        <param name="camera_id" value="0"/>
-        <param name="frame_width" value="640"/>
-        <param name="frame_height" value="480"/>
-        
+        <!-- 相机话题配置 -->
+        <param name="rgb_topic" value="$(arg rgb_topic)"/>
+
         <!-- 识别配置 -->
         <param name="max_recognition_attempts" value="10"/>
         <param name="recognition_timeout" value="10.0"/>
-        
+
         <!-- 人脸数据库路径 -->
         <param name="face_database_path" value="$(find monitor)/face_database"/>
     </node>
