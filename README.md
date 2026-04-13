@@ -3,37 +3,23 @@
 
 ## 一、行为树项目安装指南（可选，便于测试）
 ### 项目地址 https://github.com/BehaviorTree/BehaviorTree.CPP
-### 安装、编译、在ros中使用指南
-1、安装conan并执行默认初始化程序
+### 可以将该项目当做一个ros2的功能包，使用colcon进行管理
+### 安装步骤
+在本地创建一个新的文件夹，这里以 `/root/BT_ws`为例，**请自行选择并替换该目录！！！**
 
-    pip install conan
-    conan profile detect
+`cd /root/BT_ws && mkdir src && cd /src`
 
-2、选择一个文件夹(这里以/home/val/Downloads为例)，进入文件夹后执行 
+`git clone https://github.com/BehaviorTree/BehaviorTree.CPP.git`
 
-    git clone https://github.com/BehaviorTree/BehaviorTree.CPP.git
+`cd .. && colcon build`
 
-3、进入项目根目录 `/home/val/Downloads/BehaviorTree.CPP`，依次执行执行以下指令
+把下面的内容加入到.bashrc中
+`source /root/BT_ws/install/setup.bash`
 
-    conan install . -s build_type=Release --build=missing
-    cmake --preset conan-release
-    cmake --build --preset conan-release
+或者把下面内容加入到.zshrc中
+`source /root/BT_ws/install/setup.zsh`
 
-以上指令中第一行是自动搜索依赖然后拉取源进行构建安装，第二行是生成CMake配置编译器，第三行才开始编译
-
-4、编译成功后，进入项目根目录中的`build\Release`目录，这里保存了所有编译成功的结果，然后再`Release`目录下执行
-
-    cmake --install . --prefix /home/val/Downloads/BehaviorTree.CPP/install
-以上指令会把编译好的库安装在`/home/val/Downloads/BehaviorTree.CPP/install`文件夹下，完成安装
-
-5、编写CMakeLists.txt
-
-设定安装路径，寻找包，添加可执行文件，对库进行连接
-
-    set(behaviortree_cpp_DIR "/home/val/Downloads/BehaviorTree.CPP/install/lib/cmake/behaviortree_cpp")
-    find_package(behaviortree_cpp REQUIRED)
-    add_executable(your_node src/your_node.cpp)
-    target_link_libraries(your_node BT::behaviortree_cpp)
+打开终端，进入Medical_Embodied,可以正常编译了
 
 ## 二、功能包与节点说明
 
@@ -52,7 +38,7 @@ Action：
 - `CallNurse.action`（goal: `bed_ids[]`, `summarys[]`; result: `status`, `message`; feedback: `progress`）  
 Service：  
 - `DetectAnomaly.srv`（req: `mode`, `area_bed_id`; res: `is_anomaly`, `details`, `bed_ids[]`, `urgencies[]`）  
-- `PatrolTrigger.srv`、`Dock.srv`、`ChargeUntil.srv`、`FaceIdentify.srv`、`SetConfig.srv`  
+- `Dock.srv`、`ChargeUntil.srv`、`FaceIdentify.srv`、`SetConfig.srv`  
 Message：`Battery.msg`、`Fault.msg`、`ActionStatus.msg` 等。  
 需实现：对接真实系统时保持接口兼容。
 
