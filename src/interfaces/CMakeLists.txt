@@ -14,7 +14,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/DetectAnomaly.srv"
   "srv/FaceIdentify.srv"
   "srv/SetConfig.srv"
-  "srv/PatrolTrigger.srv"
   "action/Navigate.action"
   "action/LLMInteraction.action"
   "action/CallNurse.action"
