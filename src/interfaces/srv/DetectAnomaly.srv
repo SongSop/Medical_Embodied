@@ -1,0 +1,7 @@
+int32 mode   # scan or bed
+int32 area_bed_id
+---
+bool is_anomaly
+string details
+int32[] bed_ids
+int32[] urgencies

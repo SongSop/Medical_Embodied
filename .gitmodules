@@ -1,0 +1,8 @@
+[submodule "src/nav_third_party/mcl_3dl"]
+	path = src/nav_third_party/mcl_3dl
+	url = https://github.com/at-wat/mcl_3dl.git
+
+[submodule "src/nav_third_party/robot_localization"]
+	path = src/nav_third_party/robot_localization
+	url = https://github.com/cra-ros-pkg/robot_localization.git
+	branch = noetic-devel

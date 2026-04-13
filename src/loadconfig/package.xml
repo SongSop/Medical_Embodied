@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>loadconfig</name>
+  <version>0.0.1</version>
+  <description>Configuration loader and parameter manager (ROS2).</description>
+  <maintainer email="val@todo.todo">val</maintainer>
+  <license>TODO</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>interfaces</depend>
+  <depend>ament_index_python</depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

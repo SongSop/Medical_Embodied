@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>monitor</name>
+  <version>0.0.1</version>
+  <description>Mock monitor publishers and detection services (ROS2).</description>
+  <maintainer email="val@todo.todo">val</maintainer>
+  <license>TODO</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>interfaces</depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

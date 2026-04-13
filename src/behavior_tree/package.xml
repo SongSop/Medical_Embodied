@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>behavior_tree</name>
+  <version>0.0.1</version>
+  <description>Behavior tree package for Medical_Embodied (ROS2 migration).</description>
+  <maintainer email="val@todo.todo">val</maintainer>
+  <license>TODO</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclpy</depend>
+  <depend>rclcpp_action</depend>
+  <depend>ament_index_cpp</depend>
+  <depend>std_msgs</depend>
+  <depend>interfaces</depend>
+  <depend>loadconfig</depend>
+  <depend>behaviortree_cpp</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

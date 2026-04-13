@@ -1,0 +1,8 @@
+# 人脸识别服务请求/响应
+# 请求：无参数
+---
+# 响应
+bool success           # 是否识别成功
+int32 person_id        # 识别到的人员ID，-1表示未识别
+float32 confidence      # 识别置信度 (0-100)
+string message         # 识别结果消息

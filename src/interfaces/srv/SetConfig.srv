@@ -1,0 +1,4 @@
+string config_id
+---
+bool ok
+string message
