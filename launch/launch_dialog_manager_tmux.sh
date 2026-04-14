@@ -13,6 +13,9 @@ PYTHON_NODES=(
 
     # ros node 管理节点
     "../src/llm_node_py/llm_node_py/ros2_node_dialog_manager.py"
+
+    # 行为树接口节点
+    "../src/dialog/dialog/bt_hci_interface.py"
 )
 
 # ================================
