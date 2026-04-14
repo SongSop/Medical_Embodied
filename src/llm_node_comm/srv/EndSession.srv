@@ -1,0 +1,5 @@
+string question
+---
+bool need_end
+string comment
+string response
