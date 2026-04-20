@@ -1,0 +1,32 @@
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- 2D 雷达本体（仅几何与关节） -->
+  <xacro:macro name="xjrobot_lidar_2d">
+    <link name="lidar_2d_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <cylinder length="0.025" radius="0.04" />
+        </geometry>
+        <material name="orange" />
+      </visual>
+      <visual>
+        <origin xyz="0 0 -0.03" rpy="0 0 0" />
+        <geometry>
+          <cylinder length="0.08" radius="0.01" />
+        </geometry>
+        <material name="orange" />
+      </visual>
+    </link>
+
+    <joint name="joint_lidar_2d" type="fixed">
+      <!-- 固定 TF: base_link -> lidar_2d_link
+           当前与仿真保持一致，设置为 xyz=(0.16, 0, 0.22), rpy=(0, 0, 0)。
+           如果后续更换 2D 雷达安装位，请直接修改这里。 -->
+      <origin xyz="0.16 0 0.22" rpy="0 0 0" />
+      <parent link="base_link" />
+      <child link="lidar_2d_link" />
+      <axis xyz="0 0 0" />
+      <safety_controller k_velocity="0" />
+    </joint>
+  </xacro:macro>
+</robot>

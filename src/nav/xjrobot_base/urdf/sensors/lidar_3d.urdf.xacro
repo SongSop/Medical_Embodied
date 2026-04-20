@@ -1,0 +1,25 @@
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- 实机专用 3D 雷达模型。当前安装关系与仿真版本保持一致。 -->
+  <xacro:macro name="xjrobot_lidar_3d">
+    <link name="lidar_3d_link">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <cylinder length="0.06" radius="0.0325" />
+        </geometry>
+        <material name="grey" />
+      </visual>
+    </link>
+
+    <joint name="joint_lidar_3d" type="fixed">
+      <!-- 固定 TF: base_link -> lidar_3d_link
+           实机版本当前与仿真保持一致，xyz=(0.285, 0, 0.165), rpy=(0, 0, 0)。
+           后续调整 3D 雷达安装位置，请修改这里。 -->
+      <origin xyz="0.24 0 0.02" rpy="0.0 0.0 0.0" />
+      <parent link="base_link" />
+      <child link="lidar_3d_link" />
+      <axis xyz="0 0 0" />
+      <safety_controller k_velocity="0" />
+    </joint>
+  </xacro:macro>
+</robot>

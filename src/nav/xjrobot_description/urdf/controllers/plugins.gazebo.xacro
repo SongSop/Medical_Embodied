@@ -1,0 +1,29 @@
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- 底盘运动与关节状态插件（按 lino 的“插件独立文件”方式拆分） -->
+  <xacro:macro name="xjrobot_drive_plugins">
+    <gazebo>
+      <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
+        <topic>cmd_vel</topic>
+        <frame_id>odom</frame_id>
+        <child_frame_id>base_footprint</child_frame_id>
+        <odom_topic>odom/unfiltered</odom_topic>
+        <left_joint>joint_lw</left_joint>
+        <right_joint>joint_rw</right_joint>
+        <wheel_separation>0.56</wheel_separation>
+        <wheel_radius>0.10</wheel_radius>
+        <odom_publish_frequency>50</odom_publish_frequency>
+      </plugin>
+    </gazebo>
+
+    <gazebo>
+      <plugin
+        filename="gz-sim-joint-state-publisher-system"
+        name="gz::sim::systems::JointStatePublisher">
+        <topic>joint_states</topic>
+        <update_rate>50</update_rate>
+        <joint_name>joint_lw</joint_name>
+        <joint_name>joint_rw</joint_name>
+      </plugin>
+    </gazebo>
+  </xacro:macro>
+</robot>

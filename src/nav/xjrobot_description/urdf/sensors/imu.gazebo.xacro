@@ -1,0 +1,21 @@
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- IMU 仿真配置。注意：显式启用 Imu system，避免仅有 topic 声明但无数据输出 -->
+  <xacro:macro name="xjrobot_imu_gazebo" params="imu_visual:=false">
+    <gazebo>
+      <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu">
+      </plugin>
+    </gazebo>
+
+    <gazebo reference="imu_link">
+      <gravity>true</gravity>
+      <sensor name="imu_sensor" type="imu">
+        <always_on>true</always_on>
+        <!-- 对齐 lino：topic 不带前导斜杠，避免某些版本下桥接匹配异常 -->
+        <topic>imu/data</topic>
+        <update_rate>200</update_rate>
+        <visualize>${imu_visual}</visualize>
+        <pose>0 0 0 0 0 0</pose>
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+</robot>

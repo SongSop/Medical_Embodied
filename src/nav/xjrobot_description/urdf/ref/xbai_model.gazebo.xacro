@@ -1,0 +1,217 @@
+<?xml version="1.0"?>
+<robot name="jz" xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:arg name="laser_visual" default="false"/>
+  <xacro:arg name="imu_visual"   default="false"/>
+
+  <gazebo reference="base_link">
+    <material>Gazebo/TurquoiseGlowOutline</material>
+  </gazebo>
+
+  <gazebo reference="fore_universal_wheel_link">
+    <material>Gazebo/Black</material>
+  </gazebo>
+
+  <gazebo reference="back_universal_wheel_link">
+    <material>Gazebo/Black</material>
+  </gazebo>
+
+  <gazebo reference="small_fore_wheel_link">
+    <material>Gazebo/Blue</material>
+  </gazebo>
+  <gazebo reference="small_back_wheel_link">
+    <material>Gazebo/Blue</material>
+  </gazebo>
+
+  <gazebo reference="left_wheel_link">
+    <material>Gazebo/Black</material>
+  </gazebo>
+
+  <gazebo reference="right_wheel_link">
+    <material>Gazebo/Black</material>
+  </gazebo>
+
+  <gazebo>
+    <plugin name="diff_plugin" filename="libgazebo_ros_diff_drive.so">
+      <commandTopic>cmd_vel</commandTopic>
+      <odometryTopic>odom</odometryTopic>
+      <odometryFrame>odom</odometryFrame>
+      <odometrySource>world</odometrySource>
+      <publishOdomTF>false</publishOdomTF>
+      <robotBaseFrame>base_link</robotBaseFrame>
+      <publishWheelTF>false</publishWheelTF>
+      <publishTf>true</publishTf>
+      <publishWheelJointState>false</publishWheelJointState>
+      <legacyMode>false</legacyMode>
+      <updateRate>50</updateRate>
+      <leftJoint>joint_lw</leftJoint>
+      <rightJoint>joint_rw</rightJoint>
+      <wheelSeparation>0.56</wheelSeparation>
+      <wheelDiameter>0.20</wheelDiameter>
+      <wheelAcceleration>2</wheelAcceleration>
+      <wheelTorque>200</wheelTorque>
+      <rosDebugLevel>na</rosDebugLevel>
+    </plugin>
+  </gazebo>
+
+   <gazebo reference="imu_link">
+    <sensor type="imu" name="imu">
+      <always_on>true</always_on>
+      <visualize>$(arg imu_visual)</visualize>
+    </sensor>
+    <material>Gazebo/FlatBlack</material>
+  </gazebo>
+
+  <gazebo>
+    <plugin name="imu_plugin" filename="libgazebo_ros_imu.so">
+      <alwaysOn>true</alwaysOn>
+      <bodyName>imu_link</bodyName>
+      <frameName>imu_link</frameName>
+      <topicName>/livox/imu</topicName>
+      <serviceName>imu_service</serviceName>
+      <gaussianNoise>0.0</gaussianNoise>
+      <updateRate>500</updateRate>
+      <imu>
+        <noise>
+          <type>gaussian</type>
+          <rate>
+            <mean>0.0</mean>
+            <stddev>2e-4</stddev>
+            <bias_mean>0.0000075</bias_mean>
+            <bias_stddev>0.0000008</bias_stddev>
+          </rate>
+          <accel>
+            <mean>0.0</mean>
+            <stddev>1.7e-2</stddev>
+            <bias_mean>0.01</bias_mean>
+            <bias_stddev>0.001</bias_stddev>
+          </accel>
+        </noise>
+      </imu>
+    </plugin>
+  </gazebo>
+
+  <gazebo reference="lidar_2d_link">
+    <material>Gazebo/Orange</material>
+    <sensor type="ray" name="lds_lfcd_sensor">
+      <pose>0 0 0 0 0 0</pose>
+      <visualize>$(arg laser_visual)</visualize>
+      <update_rate>10</update_rate>
+      <ray>
+        <scan>
+          <horizontal>
+            <samples>1387</samples>
+            <resolution>1</resolution>
+            <min_angle>-1.937315</min_angle>
+            <max_angle>1.937315</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.1</min>
+          <max>20</max>
+          <resolution>0.01</resolution>
+        </range>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.01</stddev>
+        </noise>
+      </ray>
+      <plugin name="gazebo_ros_lds_lfcd_controller" filename="libgazebo_ros_laser.so">
+        <topicName>scan</topicName>
+        <frameName>laser_link</frameName>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+  <gazebo reference="lidar_3d_link">
+    <material>Gazebo/Grey</material>
+    <sensor type="ray" name="laser_livox">
+      <pose>0 0 0.0 0 0 0</pose>
+      <visualize>True</visualize>
+      <always_on>True</always_on>
+      <update_rate>10</update_rate>
+      <!-- This ray plgin is only for visualization. -->
+      <plugin name="gazebo_ros_laser_controller" filename="liblivox_laser_simulation.so">
+      <ray>
+      <scan>
+        <horizontal>
+          <samples>100</samples>
+          <resolution>1</resolution>
+          <min_angle>-3.1415926535897931</min_angle>
+          <max_angle>3.1415926535897931</max_angle>
+        </horizontal>
+        <vertical>
+          <samples>50</samples>
+          <resolution>1</resolution>
+          <min_angle>-3.1415926535897931</min_angle>
+          <max_angle>3.1415926535897931</max_angle>
+        </vertical>
+      </scan>
+      <range>
+        <min>0.1</min>
+        <max>40</max>
+        <resolution>1</resolution>
+      </range>
+      <noise>
+        <type>gaussian</type>
+        <mean>0.0</mean>
+        <stddev>0.0</stddev>
+      </noise>
+      </ray>
+        <visualize>False</visualize>
+        <samples>20000</samples>
+        <downsample>1</downsample>
+        <csv_file_name>mid360-real-centr.csv</csv_file_name>
+        <publish_pointcloud_type>2</publish_pointcloud_type>
+        <ros_topic>/livox/lidar</ros_topic>
+        <frameName>lidar_3d_link</frameName>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+   
+ <!-- <gazebo reference="camera_front_base">
+    <material>Gazebo/Orange</material>
+  <sensor name="depth_camera_front" type="depth">
+    <update_rate>1</update_rate>
+    <camera>
+      <horizontal_fov>1.2386</horizontal_fov>
+      <image>
+        <width>320</width>
+        <height>200</height>
+        <format>R8G8B8</format>
+      </image>
+      <clip>
+        <near>0.3</near>
+        <far>3</far>
+      </clip>
+    </camera>
+    <plugin name="camera_front_controller" filename="libgazebo_ros_openni_kinect.so">
+      <baseline>0.04</baseline>
+      <alwaysOn>true</alwaysOn>
+      <updateRate>0</updateRate>
+      <cameraName>camera_front</cameraName>
+      <imageTopicName>/camera_front/image</imageTopicName>
+      <cameraInfoTopicName>/camera_front/camera_info</cameraInfoTopicName>
+      <depthImageTopicName>/camera_front/depth/image</depthImageTopicName>
+      <depthImageInfoTopicName>/camera_front/depth/camera_info</depthImageInfoTopicName>
+      <pointCloudTopicName>/camera_front/depth/points</pointCloudTopicName>
+      <frameName>camera_front_link</frameName>
+      <pointCloudCutoff>0.3</pointCloudCutoff>
+      <pointCloudCutoffMax>3.0</pointCloudCutoffMax>
+      <distortionK1>0</distortionK1>
+      <distortionK2>0</distortionK2>
+      <distortionK3>0</distortionK3>
+      <distortionT1>0</distortionT1>
+      <distortionT2>0</distortionT2>
+      <CxPrime>0</CxPrime>
+      <Cx>0</Cx>
+      <Cy>0</Cy>
+      <focalLength>0</focalLength>
+      <hackBaseline>0</hackBaseline>
+    </plugin>
+  </sensor>
+ </gazebo> -->
+
+
+</robot>

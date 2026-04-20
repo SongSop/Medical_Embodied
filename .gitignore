@@ -39,7 +39,7 @@ build/
 # CMakeLists.txt.user
 
 # srv/_*.py
-# *.pcd
+*.pcd
 # *.pyc
 # qtcreator-*
 # *.user
