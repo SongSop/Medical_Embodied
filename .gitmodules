@@ -1,7 +1,3 @@
-[submodule "src/nav/xjrobot_thirdparty/navigation2"]
-	path = src/nav/xjrobot_thirdparty/navigation2
-	url = https://github.com/ros-navigation/navigation2.git
-	
 [submodule "src/nav/xjrobot_thirdparty/ground_segmentation"]
 	path = src/nav/xjrobot_thirdparty/ground_segmentation
 	url = https://github.com/dfki-ric/ground_segmentation.git
