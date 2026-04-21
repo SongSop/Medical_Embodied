@@ -1,7 +1,0 @@
-[submodule "src/nav/xjrobot_thirdparty/ground_segmentation"]
-	path = src/nav/xjrobot_thirdparty/ground_segmentation
-	url = https://github.com/dfki-ric/ground_segmentation.git
-	
-[submodule "src/nav/xjrobot_thirdparty/ground_segmentation_ros2"]
-	path = src/nav/xjrobot_thirdparty/ground_segmentation_ros2
-	url = https://github.com/dfki-ric/ground_segmentation_ros2.git

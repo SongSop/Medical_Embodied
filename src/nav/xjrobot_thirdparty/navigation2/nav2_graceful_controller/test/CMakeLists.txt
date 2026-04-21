@@ -10,6 +10,7 @@ ament_target_dependencies(test_graceful_controller
 )
 target_link_libraries(test_graceful_controller
   ${library_name}
+  smooth_control_law
 )
 
 # Egopolar test

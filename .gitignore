@@ -2,6 +2,7 @@
 install/
 log/
 build/
+doc/
 *.pyc
 # bin/
 # lib/
