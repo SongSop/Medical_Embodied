@@ -221,12 +221,16 @@ namespace {
             msg.data = true;   // 表示检测到 KWS
             kws_pub->publish(msg);
 
+            sys_log("send kws signal to bt.");
+
 
             // 这里不能进行 resume, 要靠行为树来发送 action 来开启 asr
             // 播放完成后恢复 ASR
             // sys_log("switch to asr.");
             // change_to_asr();
-            // hzc::asr->resume();
+
+            // 测试用，有的时候一次呼叫没有用
+            hzc::asr->resume();
         }).detach();
     }
 
@@ -408,7 +412,7 @@ int main(int argc, char ** argv)
     node = rclcpp::Node::make_shared("ros_node_keyword_asr");
 
     // asr 定期检查，如果 25 秒 没有应答就走开
-    asr_timer = node->create_wall_timer(std::chrono::seconds(25), asr_timerCallback);
+    asr_timer = node->create_wall_timer(std::chrono::seconds(20), asr_timerCallback);
     asr_timer->cancel();
 
     // 向 question manager 发布语音识别到的问题
@@ -454,9 +458,10 @@ int main(int argc, char ** argv)
     hzc::asr->setAsrCallback(asr_callback);
 
     // 切换到关键词识别模型
-    hzc::asr->setReadInStreamCallback(hzc::asr_inputStream_callback);
+    change_to_kws();
+
     // 恢复语音输入
-    // hzc::asr->resume();
+    hzc::asr->resume();
 
     sys_log("ros node keyword asr init done.");
 

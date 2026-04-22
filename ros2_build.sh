@@ -5,7 +5,7 @@ set -e
 # 默认参数
 # ================================
 PARALLEL_WORKERS=2        # 同时编译几个 package
-BUILD_JOBS=4              # 每个 package 使用多少核
+BUILD_JOBS=8              # 每个 package 使用多少核
 
 # ================================
 # 参数解析

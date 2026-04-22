@@ -1,20 +1,30 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+# der 包
+# https://www.volcengine.com/docs/6561/1329505?lang=zh
+
+# ali:
+# https://help.aliyun.com/zh/model-studio/qwen-tts-realtime?spm=a2c4g.11186623.help-menu-2400256.d_0_4_2_1.297ccb649HUjhr&scm=20140722.H_2938790._.OR_help-T_cn~zh-V_1#f9ec7be148l9g
+
+# https://github.com/aliyun/alibabacloud-bailian-speech-demo/tree/master/samples/conversation/omni
+
+
 import os, sys
 import base64
 import threading
 import time
 import pyaudio
+import queue
 
 import rclpy
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from std_msgs.msg import String
 
 import dashscope
 from dashscope.audio.qwen_tts_realtime import *
 
-# 当前目录
 ROOT_DIR = os.path.abspath(
     os.path.join(
         os.path.dirname(__file__), 
@@ -24,136 +34,388 @@ ROOT_DIR = os.path.abspath(
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-"""
-ros2 topic pub -1 /tts_realtime_data std_msgs/msg/String "{data: '[START]'}"
-
-ros2 topic pub -1 /tts_realtime_data std_msgs/msg/String "{data: '你好，我是小医，请问有什么可以帮助你的？'}"
-
-ros2 topic pub -1 /tts_realtime_data std_msgs/msg/String "{data: '[DONE]'}"
-
-"""
-
 from get_dashscope_key import get_dashscope_key
 
+
 # =========================
-# 全局变量（保持你的写法）
+# 全局变量
 # =========================
 
-qwen_tts_realtime: QwenTtsRealtime = None  # type: ignore
-
-DO_VIDEO_TEST = False
-
-tts_status = 'idle'
+tts_status = "idle"
+pub_finished = None
 
 
 def init_dashscope_api_key():
-    """
-        Set your DashScope API-key. More information:
-        https://github.com/aliyun/alibabacloud-bailian-speech-demo/blob/master/PREREQUISITES.md
-    """
-
-    # 新加坡和北京地域的API Key不同。获取API Key：https://help.aliyun.com/zh/model-studio/get-api-key
-    # if 'DASHSCOPE_API_KEY' in os.environ:
-    #     # load API-key from environment variable DASHSCOPE_API_KEY
-    #     dashscope.api_key = os.environ['DASHSCOPE_API_KEY']
-    # else:
-    #     dashscope.api_key = 'sk-xxxx'  # set API-key manually
-
     dashscope.api_key = get_dashscope_key()
 
 
-class MyCallback(QwenTtsRealtimeCallback):
-    def __init__(self, node: Node):
-        self.node = node
-        self.complete_event = threading.Event()
 
-        # 初始化 PyAudio
+"""
+
+# 发布问题：
+ros2 topic pub --once /question_asr std_msgs/msg/String "{data: '天气今天如何？'}"
+
+python test_ros2_tts.py
+
+
+# 监听大模型的输出
+ros2 topic echo /ali_llm_output
+"""
+
+
+# =========================
+# Callback（不依赖 node）
+# =========================
+
+# class MyCallback(QwenTtsRealtimeCallback):
+#     def __init__(self):
+#         self.complete_event = threading.Event()
+
+#         self.p = pyaudio.PyAudio()
+#         self.stream = self.p.open(
+#             format=pyaudio.paInt16,
+#             channels=1,
+#             rate=24000,
+#             output=True,
+#             frames_per_buffer=4096,
+#         )
+
+#     def on_open(self) -> None:
+#         print('connection opened')
+
+#     # 在 session finished 之后，这个 on close 似乎会有延迟
+#     def on_close(self, close_status_code, close_msg) -> None:
+#         print(f'connection closed with code: {close_status_code}, msg: {close_msg}')
+
+#         global tts_status
+#         tts_status = "idle"
+
+#         global pub_finished
+#         msg = String()
+#         msg.data = "finished"
+
+#         if pub_finished is not None:
+#             pub_finished.publish(msg)
+#             print('published /tts_session_finished')
+#         else:
+#             print("error: ros_pub_finished is None.")
+
+#         self.complete_event.set()
+
+#         self.close_audio()
+
+
+#     def wait_for_close(self):
+#         self.complete_event.wait()
+
+
+#     def on_event(self, response: str) -> None:
+#         try:
+#             global tts_status
+#             type = response['type']
+
+#             if type == 'session.created':
+#                 print(f"start session: {response['session']['id']}")
+
+#             elif type == 'response.audio.delta':
+#                 pcm = base64.b64decode(response['delta'])
+#                 self.stream.write(pcm)
+
+#             elif type == 'session.finished':
+#                 print('session finished')
+
+#             elif type == 'error':
+#                 print(f"error: {response['error']}")
+
+#         except Exception as e:
+#             print(f'[Error] {e}')
+
+#     def close_audio(self):
+#         try:
+#             self.stream.stop_stream()
+#             self.stream.close()
+#             self.p.terminate()
+#             print('audio device released')
+#         except Exception as e:
+#             print(f'close audio failed: {e}')
+
+
+# # =========================
+# # ROS Node
+# # =========================
+
+# class QwenRealtimeTtsRosNode(Node):
+#     def __init__(self):
+#         super().__init__('qwen_realtime_tts_node')
+
+#         init_dashscope_api_key()
+
+#         self.get_logger().info('Initializing ...')
+
+#         # 发布 tts session finished 的信号
+#         global pub_finished
+#         pub_finished = self.create_publisher(
+#             String, '/tts_session_finished', 10
+#         )
+
+#         self.session_lock = threading.Lock()
+
+#         self.text_queue = queue.Queue()
+#         self.done_requested = False
+#         self.finishing = False
+
+#         # 定时器，每隔 0.3 秒发布信息
+#         self.timer = self.create_timer(0.3, self.process_queue)
+
+#         self.qwen_tts_realtime = None
+#         self.callback = None
+
+#         self.sub = self.create_subscription(
+#             String,
+#             '/tts_realtime_data',
+#             self.on_text,
+#             200,
+#         )
+
+#         self.get_logger().info('Qwen realtime TTS ROS node ready')
+
+
+#     # =========================
+#     # 队列处理
+#     # =========================
+#     def process_queue(self):
+#         session = self.qwen_tts_realtime
+
+#         if session and not self.text_queue.empty():
+#             # 从 queue 中取出对应的文本
+#             try:
+#                 text = self.text_queue.get_nowait()
+#             except queue.Empty:
+#                 return
+
+#             self.get_logger().info(f'send text: {text}')
+
+#             if text == '[DONE]':
+#                 session.finish()
+#             else:
+#                 # 向 server 追加并提交要进行 tts 的文本
+#                 try:
+#                     session.append_text(text + "。")
+#                     session.commit()
+#                 except Exception as e:
+#                     print(f'error -> commit({text}) failed: {e}')
+
+
+#     # =========================
+#     # 连接
+#     # =========================
+#     def connect_to_server(self):
+#         print("connect to server")
+
+#         # 每次新建 callback
+#         self.callback = MyCallback()
+
+#         self.qwen_tts_realtime = QwenTtsRealtime(
+#             model='qwen3-tts-instruct-flash-realtime',
+#             callback=self.callback,
+#             url='wss://dashscope.aliyuncs.com/api-ws/v1/realtime'
+#         )
+
+#         self.qwen_tts_realtime.connect()
+
+#         self.qwen_tts_realtime.update_session(
+#             voice='Cherry',
+#             response_format=AudioFormat.PCM_24000HZ_MONO_16BIT,
+#             speech_rate=0.8,
+#             optimize_instructions=True,
+#             mode='commit',
+#         )
+
+#         self.done_requested = False
+#         self.finishing = False
+
+
+#     # =========================
+#     # 接收 ROS 消息
+#     # =========================
+#     def on_text(self, msg: String):
+#         global tts_status
+
+#         # 发送过来的文本
+#         text = msg.data.strip()
+#         if not text:
+#             print("ros topic received text msg is None.")
+#             return
+
+#         # START
+#         if '[START]' in text:
+#             # 等待上次的 session close
+#             print("wait for last session closing to start a new client.")
+#             if self.callback:
+#                 self.callback.wait_for_close()
+
+#             if tts_status == "idle":
+#                 self.connect_to_server()
+#             else:
+#                 print(f"tts status error: {tts_status} != 'idle'")
+
+#             tts_status = 'running'
+#             return
+
+#         # DONE
+#         if '[DONE]' in text:
+#             self.text_queue.put('[DONE]')
+#             return
+
+#         # 文本入队
+#         self.text_queue.put(text)
+#         print(f'enqueue: {text}')
+
+
+#     # =========================
+#     # 关闭
+#     # =========================
+#     def shutdown(self):
+#         return
+#         # self.get_logger().info('shutdown')
+
+#         # with self.session_lock:
+#         #     session = self.qwen_tts_realtime
+
+#         # if session is not None:
+#         #     try:
+#         #         session.finish()
+#         #     except:
+#         #         pass
+
+#         # if self.callback is not None:
+#         #     self.callback.close_audio()
+
+
+class MyCallback(QwenTtsRealtimeCallback):
+    def __init__(self):
+        # 这句话是否已经合成完成
+        self.tts_synthesis_complete_event = False
+
+        # 合成出来的这句话是否已经播放完成
+        self.play_audio_done_event = False
+
+        self.connected = False
+
         self.p = pyaudio.PyAudio()
         self.stream = self.p.open(
             format=pyaudio.paInt16,
             channels=1,
             rate=24000,
             output=True,
-            frames_per_buffer=8000,
+            frames_per_buffer=2048,
         )
 
-        # 添加 ROS 发布器
-        self.pub_finished = self.node.create_publisher(
-            String, '/tts_session_finished', 10
-        )
+        # 音频队列
+        self.audio_queue = queue.Queue()
 
+        # 启动音频播放线程
+        self.audio_thread = threading.Thread(target=self.audio_worker)
+        self.audio_thread.start()
 
-    # 当和服务端建立连接完成后，该方法立刻被回调
+    def audio_worker(self):
+        while True:
+            try:
+                pcm_data = self.audio_queue.get(timeout=0.1)
+                if pcm_data is None:
+                    break
+
+                # 这个是阻塞的
+                self.stream.write(pcm_data)
+
+            except queue.Empty:
+                # 如果合成完毕，并且 queue 中也空了，说明这句话已经合成并且播放完成了
+                if self.tts_synthesis_complete_event:
+                    self.play_audio_done_event = True
+                    self.tts_synthesis_complete_event = False
+
+                continue   # 超时后循环继续，检查 stop_event
+
     def on_open(self) -> None:
-        self.node.get_logger().info('connection opened, init player')
+        print('connection opened')
+        self.connected = True
 
-    # 当服务已经关闭连接后进行回调
+    # 在 session finished 之后，这个 on close 似乎会有延迟
     def on_close(self, close_status_code, close_msg) -> None:
-        # close_status_code：关闭WebSocket的状态码。
-        # close_msg：关闭WebSocket的关闭信息。
+        print(f'connection closed with code: {close_status_code}, msg: {close_msg}')
+        self.connected = False
 
-        # 关闭扬声器设备
-        self.stream.stop_stream()
-        self.stream.close()
-        self.p.terminate()
-        self.node.get_logger().info('connection closed, audio device released')
+        # 理论上 on close 运行的时候，里面不可能出现 tts_synthesis_complete_event=False
+        if not self.tts_synthesis_complete_event:
+            # 出现了说明 server 那边卡死了
+            self.tts_synthesis_complete_event = True
 
-        self.node.get_logger().info(
-            f'connection closed with code: {close_status_code}, msg: {close_msg}, destroy player'
-        )
+    # 死等，直到 self.connected 为 True
+    def wait_for_connected(self):
+        while not self.connected:
+            time.sleep(0.1)
 
-    def on_event(self, response: str) -> None:  # type: ignore
+    def on_event(self, response: str) -> None:
         try:
-            global qwen_tts_realtime, tts_status
-            type = response['type']  # type: ignore
+            global tts_status
+            type = response['type']
 
-            if 'session.created' == type:
-                self.node.get_logger().info(
-                    f"start session: {response['session']['id']}"  # type: ignore
-                )
+            if type == 'session.created':
+                print(f"start session: {response['session']['id']}")
 
-            elif 'response.audio.delta' == type:
-                recv_audio_b64 = response['delta']  # type: ignore
+            elif type == 'response.audio.delta':
+                pcm = base64.b64decode(response['delta'])
 
-                # 把生成的音频播放到扬声器设备
-                pcm = base64.b64decode(recv_audio_b64)
-                self.stream.write(pcm)
+                # 生产者：将数据放入队列，不阻塞
+                self.audio_queue.put(pcm)
 
-            elif 'response.done' == type:
-                # rospy.loginfo(
-                #     'response %s dpub_finishedone',
-                #     qwen_tts_realtime.get_last_response_id()
-                # )
-                pass
+                # self.stream.write(pcm)
 
-            elif 'session.finished' == type:
-                # 这个 session finished 好像就是当语音全部播放完成之后
-                self.node.get_logger().info('session finished')
-                self.complete_event.set()
+            elif type == 'session.finished':
+                print('session finished')
 
-                # 改变当前状态
-                tts_status = 'idle'
+                self.tts_synthesis_complete_event = True
 
-                # 发布 ROS topic 告诉其他节点当前的session结束了
-                # 其实也就是语音已经播放完成了
-                time.sleep(0.3)
-                msg = String()
-                msg.data = "finished"
-                self.pub_finished.publish(msg)
-                self.node.get_logger().info('published /tts_session_finished')
 
-            elif 'error' == type:
-                self.node.get_logger().error(
-                    f"error: {response['error']['code']}, {response['error']['message']}"  # type: ignore
-                )
+            elif type == 'error':
+                print(f"error: {response['error']}")
 
         except Exception as e:
-            self.node.get_logger().error(f'[Error] {e}')
-            return
+            print(f'[Error] {e}')
 
+    def close_audio(self):
+        try:
+            # 发送终止信号
+            self.audio_queue.put(None)
+            # 等待线程结束
+            if self.audio_thread.is_alive():
+                self.audio_thread.join(timeout=2.0)
+
+            self.stream.stop_stream()
+            self.stream.close()
+            self.p.terminate()
+            print('audio device released')
+        except Exception as e:
+            print(f'close audio failed: {e}')
+
+    def wait_for_sentence_synthesis(self, timeout=-1):
+        wait_time = 0
+        while not self.tts_synthesis_complete_event:
+            time.sleep(0.1)
+            wait_time += 0.1
+            if timeout > 0 and wait_time > timeout:
+                return False
+            
+        return True
+
+    # 等待这个句子播放完成
     def wait_for_finished(self):
-        self.complete_event.wait()
+        while not self.play_audio_done_event:
+            time.sleep(0.1)
 
+# =========================
+# ROS Node
+# =========================
 
 class QwenRealtimeTtsRosNode(Node):
     def __init__(self):
@@ -163,36 +425,20 @@ class QwenRealtimeTtsRosNode(Node):
 
         self.get_logger().info('Initializing ...')
 
-        self.callback = MyCallback(self)
-
-        # 初始化 Qwen 实时 TTS
-        self.qwen_tts_realtime = QwenTtsRealtime(
-            # model='qwen3-tts-instruct-flash-realtime',  # 使用的是哪个模型
-            model='qwen3-tts-flash-realtime',
-
-            callback=self.callback,                     # callback function
-            url='wss://dashscope.aliyuncs.com/api-ws/v1/realtime'  # 北京的 api 地址
+        # 发布 tts session finished 的信号
+        global pub_finished
+        pub_finished = self.create_publisher(
+            String, '/tts_session_finished', 10
         )
 
-        self.qwen_tts_realtime.connect()  # 手动建立与服务器的连接
+        # 定时器，每隔 0.3 秒发布信息
+        self.timer = self.create_timer(0.3, self.process_queue)
 
-        self.qwen_tts_realtime.update_session(
-            voice='Cherry',  # 语音合成所使用的音色
-            response_format=AudioFormat.PCM_24000HZ_MONO_16BIT,
- 
-            # 语速调节
-            speech_rate=0.8,
+        self.qwen_tts_realtime = None
+        self.callback = None
+        self.text_queue = queue.Queue()
+        self.connect_to_server()
 
-            # instructions 相关
-            # instructions='热心的女护士，带有关心关切的语气。',
-            # 当设置为 True 时，系统将对 instructions 的内容进行语义增强与重写，生成更适合语音合成的内部指令
-            optimize_instructions=True,
-
-            # mode='server_commit',  # server commit 模式还是 commit 模式
-            mode='commit',
-        )
-
-        # 订阅要合成为语音的文本
         self.sub = self.create_subscription(
             String,
             '/tts_realtime_data',
@@ -202,55 +448,194 @@ class QwenRealtimeTtsRosNode(Node):
 
         self.get_logger().info('Qwen realtime TTS ROS node ready')
 
+
+    # =========================
+    # 队列处理
+    # =========================
+    def process_queue(self):
+        if self.qwen_tts_realtime and not self.text_queue.empty():
+            # 从 queue 中取出对应的文本
+            try:
+                text = self.text_queue.get_nowait()
+            except queue.Empty:
+                return
+
+            self.get_logger().info(f'send text: {text}')
+
+            if text == '[DONE]':
+
+                # 发送一个信号，说明这个问题的回答已经结束了
+                global pub_finished
+                if pub_finished is not None:
+                    msg = String()
+                    msg.data = "finished"
+                    pub_finished.publish(msg)
+                    print('published /tts_session_finished')
+                else:
+                    print("pub_finished is None")
+
+                return
+
+            # 向 server 追加并提交要进行 tts 的文本
+            try:
+                print("check connected.")
+                # 检查是否 connected:
+                if not self.callback.connected:
+                    print("reconnect. ")
+
+                    self.callback.close_audio()
+
+                    self.connect_to_server()
+                    
+                    # # 重新 connect 
+                    # self.callback = MyCallback()
+
+                    # self.qwen_tts_realtime = QwenTtsRealtime(
+                    #     # model='qwen3-tts-instruct-flash-realtime',
+                    #     model='qwen3-tts-flash-realtime',
+                    #     callback=self.callback,
+                    #     url='wss://dashscope.aliyuncs.com/api-ws/v1/realtime'
+                    # )
+
+                    # self.qwen_tts_realtime.connect()
+
+                    # self.qwen_tts_realtime.update_session(
+                    #     voice='Cherry',
+                    #     response_format=AudioFormat.PCM_24000HZ_MONO_16BIT,
+                    #     speech_rate=0.8,
+                    #     optimize_instructions=True,
+                    #     mode='commit',
+                    # )
+
+                    print("wait for qwen server connection ...")
+                    self.callback.wait_for_connected()
+
+                # 两个全部 clear 掉
+                self.callback.play_audio_done_event = False
+                self.callback.tts_synthesis_complete_event = False
+
+                print("append text + commit.")
+                self.qwen_tts_realtime.append_text(text)
+                self.qwen_tts_realtime.commit()
+                time.sleep(0.1)
+                
+                print("set finish.")
+                self.qwen_tts_realtime.finish()
+
+                print("wait for tts.")
+                ret = self.callback.wait_for_sentence_synthesis(timeout=2)
+                if ret:
+                    print("wait for finish.")
+                    self.callback.wait_for_finished()
+                else:
+                    print("wait for tts synthesis timeout!")
+
+            except Exception as e:
+                print(f'error -> commit({text}) failed: {e}')
+
+
+    # =========================
+    # 连接
+    # =========================
+    def connect_to_server(self):
+        print("connect to server")
+
+        # 每次新建 callback
+        self.callback = MyCallback()
+
+        self.qwen_tts_realtime = QwenTtsRealtime(
+            model='qwen3-tts-instruct-flash-realtime',
+            # model='qwen3-tts-flash-realtime',
+            callback=self.callback,
+            url='wss://dashscope.aliyuncs.com/api-ws/v1/realtime'
+        )
+
+        self.qwen_tts_realtime.connect()
+
+        self.qwen_tts_realtime.update_session(
+            voice='Cherry',
+            response_format=AudioFormat.PCM_24000HZ_MONO_16BIT,
+            speech_rate=0.8,
+            optimize_instructions=True,
+            mode='commit',
+        )
+
+    # =========================
+    # 接收 ROS 消息
+    # =========================
     def on_text(self, msg: String):
         global tts_status
 
+        # 发送过来的文本
         text = msg.data.strip()
         if not text:
+            print("ros topic received text msg is None.")
             return
-        
+
+        # START
         if '[START]' in text:
-            # 是一次对话的开始
-            self.get_logger().info("receive [START] flag")
-            # 改变状态
-            tts_status = 'running'
+            # # 等待上次的 session close
+            # print("wait for last session closing to start a new client.")
+            # if self.callback:
+            #     self.callback.wait_for_close()
 
-        elif '[DONE]' in text:
-            # 是这次对话的结束
-            self.qwen_tts_realtime.finish()
-            self.get_logger().info("receive [DONE] flag")
-            
-        else:
-            self.get_logger().info(f'send text: {text}')
+            # if tts_status == "idle":
+            #     self.connect_to_server()
+            # else:
+            #     print(f"tts status error: {tts_status} != 'idle'")
 
-            time.sleep(0.1) # 不要发送的太快
+            # tts_status = 'running'
+            return
 
-            # 将文本片段追加到云端输入文本缓冲区。缓冲区是你可以写入并稍后提交的临时存储。
-            # "server_commit"模式下，服务器决定何时提交并合成文本缓冲区中的文本。
-            self.qwen_tts_realtime.append_text("" + text + "。")
+        # DONE
+        if '[DONE]' in text:
+            self.text_queue.put('[DONE]')
+            return
 
-            # 在 'commit' 下要手动触发
-            self.qwen_tts_realtime.commit()
+        # 文本入队
+        self.text_queue.put(text)
+        print(f'enqueue: {text}')
 
 
+    # =========================
+    # 关闭
+    # =========================
     def shutdown(self):
-        self.get_logger().info('shutdown qwen realtime tts node')
-        self.qwen_tts_realtime.finish()
+        return
+        # self.get_logger().info('shutdown')
 
+        # with self.session_lock:
+        #     session = self.qwen_tts_realtime
+
+        # if session is not None:
+        #     try:
+        #         session.finish()
+        #     except:
+        #         pass
+
+        # if self.callback is not None:
+        #     self.callback.close_audio()
+
+
+# =========================
+# main
+# =========================
 
 def main(args=None):
     rclpy.init(args=args)
 
-    node = None
+    node = QwenRealtimeTtsRosNode()
+
     try:
-        node = QwenRealtimeTtsRosNode()
-        rclpy.spin(node)
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:
-        if node is not None:
-            node.shutdown()
-            node.destroy_node()
+        node.callback.close_audio()
+        node.shutdown()
+        node.destroy_node()
         rclpy.shutdown()
 
 

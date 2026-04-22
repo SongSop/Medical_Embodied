@@ -7,7 +7,7 @@ set -e
 SCRIPTS=(
     "./launch_depends_asr_question.sh"
     "./launch_depends_ui_question.sh"
-    # "./launch_dialog_manager_tmux.sh"
+    "./launch_dialog_manager_tmux.sh"
 )
 
 # =========================================

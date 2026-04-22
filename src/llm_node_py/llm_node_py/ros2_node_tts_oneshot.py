@@ -45,6 +45,7 @@ if ROOT_DIR not in sys.path:
 
 from llm_node_comm.srv import TtsOneshot  # type: ignore
 
+import time
 import base64
 import threading
 import pyaudio
@@ -85,12 +86,13 @@ class OneShotTtsCallback(QwenTtsRealtimeCallback):
         self.node.get_logger().info('WebSocket 连接已打开，初始化播放器')
 
     def on_close(self, close_status_code, close_msg) -> None:
-        self.stream.stop_stream()
-        self.stream.close()
-        self.p.terminate()
-        self.node.get_logger().info(
-            f'WebSocket 连接关闭，释放音频设备: code={close_status_code} msg={close_msg}'
-        )
+        print("websocket 连接关闭。")
+        # self.stream.stop_stream()
+        # self.stream.close()
+        # self.p.terminate()
+        # self.node.get_logger().info(
+        #     f'WebSocket 连接关闭，释放音频设备: code={close_status_code} msg={close_msg}'
+        # )
 
     def on_event(self, response: str) -> None:  # type: ignore
         try:
@@ -137,7 +139,7 @@ class OneShotTtsServiceNode(Node):
 
         # 初始化全局 TTS 实例，不绑定 callback
         self.qwen_tts_realtime = QwenTtsRealtime(
-            model='qwen3-tts-flash-realtime',
+            model='qwen3-tts-instruct-flash-realtime',
             callback=self.callback,
             url='wss://dashscope.aliyuncs.com/api-ws/v1/realtime'
         )
@@ -179,6 +181,7 @@ class OneShotTtsServiceNode(Node):
         self.qwen_tts_realtime.finish()
 
         if block:
+            time.sleep(0.1)
             # 阻塞等待播放完成
             callback.wait_until_done()
         self.get_logger().info("一次性 TTS 播放完成，服务返回")

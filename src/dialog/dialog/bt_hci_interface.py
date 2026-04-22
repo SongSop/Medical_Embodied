@@ -6,10 +6,39 @@ from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.node import Node
 from std_msgs.msg import Bool
 
+"""
+监听 session 对话结束的消息：
+
+ros2 topic echo /dialog_session_finished
+
+"""
+
+import sys, os
+# 把 ros2 生成的 srv 文件的地址加上
+ROOT_DIR = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__), 
+        "../../../install/llm_node_comm/lib/python3.12/site-packages"
+    )
+)
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
+# 把 ros2 生成的 srv 文件的地址加上
+ROOT_DIR = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__), 
+        "../../../install/interfaces/lib/python3.12/site-packages"
+    )
+)
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
 from interfaces.action import LLMInteraction
 from interfaces.msg import ActionStatus
 from llm_node_comm.msg import DialogSessionFinished
 from llm_node_comm.srv import TtsOneshot
+from rclpy.executors import MultiThreadedExecutor
 
 # 定义告警模式常量（与 action goal.mode 的值保持一致）。
 INTERACTION_ALERT = 0
@@ -74,6 +103,9 @@ class LLMMockServer(Node):
     # 发送一个对话消息结束标志的 callback
     # 把发送过来的消息（是否要呼叫护士， 为什么要呼叫护士）全部接收到
     def dialog_session_finished_callback(self, msg):
+
+        print("received dialog session finished signal")
+
         # 收到结束消息后将结束标志置为 True，驱动等待循环退出。
         self.dialog_session_finished = True
         # 记录是否需要呼叫护士。
@@ -82,8 +114,11 @@ class LLMMockServer(Node):
         self.call_nurse_reason = msg.reason
 
     def execute_callback(self, goal_handle):
+
         # 当前处在什么模式下
         goal = goal_handle.request
+
+        print(f"received action request, mode:{goal}")
 
         # 最终返回的结果
         result = LLMInteraction.Result()
@@ -145,6 +180,8 @@ class LLMMockServer(Node):
             feedback.partial = 'running'
             goal_handle.publish_feedback(feedback)
 
+            print("running ... ...")
+
             # 异步等待 0.2 秒，避免忙等并与参考节奏保持一致。
             time.sleep(0.2)
 
@@ -158,6 +195,11 @@ class LLMMockServer(Node):
 
         goal_handle.succeed()
 
+        print(
+            f"action finished. call nurse:'{self.call_nurse}', "
+            f"reason:'{self.call_nurse_reason}'"
+        )
+
         return result
 
 
@@ -165,10 +207,11 @@ def main(args=None):
     rclpy.init(args=args)
     node = LLMMockServer()
 
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
+    
     try:
-
-        rclpy.spin(node)
-
+        executor.spin()
     finally:
         node.destroy_node()
         rclpy.shutdown()
