@@ -1,0 +1,4 @@
+string tts_text
+bool block
+---
+bool result

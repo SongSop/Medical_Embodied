@@ -45,8 +45,10 @@ doc/
 # qtcreator-*
 # *.user
 
+# 远端 api 的密码
+*.key
 
-
+*.codex
 
 # Catkin custom files
 # CATKIN_IGNORE
