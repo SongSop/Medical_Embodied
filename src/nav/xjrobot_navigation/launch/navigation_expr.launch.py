@@ -8,7 +8,7 @@ from launch_ros.substitutions import FindPackageShare
 
 
 # 默认加载地图名（对应 xjrobot_localization/maps/<MAP_NAME>.yaml）
-DEFAULT_MAP_PATH = "/home/medical/maps/map0413.yaml"
+DEFAULT_MAP_PATH = "/home/medical/maps/ward_20260421.yaml"
 
 
 def generate_launch_description():

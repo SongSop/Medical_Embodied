@@ -41,6 +41,7 @@ doc/
 
 # srv/_*.py
 *.pcd
+*.pgm
 # *.pyc
 # qtcreator-*
 # *.user
