@@ -1,0 +1,20 @@
+# 床位检测配置
+# 用于Medical_Embodied项目的monitor包
+
+# YOLOv8模型配置
+yolo_model_path: ""  # 留空则使用包内路径
+
+# CLIP模型配置  
+clip_model_path: ""  # 留空则使用包内路径
+
+# 检测参数
+max_beds: 10  # 最多支持床位数
+bed_id_offset: 0  # 床位ID偏移量，用于多区域场景
+
+# 服务参数
+service_name: "/detect_anomaly"
+camera_topic: "/camera/rgb/image_raw"
+
+# 可视化选项
+publish_debug_image: false
+debug_image_topic: "/bed_detection/debug_image"

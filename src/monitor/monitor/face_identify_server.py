@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+"""
+人脸识别服务节点
+通过 /camera/rgb/image_raw 话题获取图像，不再自行管理相机
+"""
 import os
 import time
 
@@ -11,22 +15,17 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 
 from interfaces.srv import FaceIdentify
+from std_msgs.msg import String
 
 
 class FaceIdentifyServer(Node):
     def __init__(self):
         super().__init__('face_identify_server')
 
-        self.declare_parameter('camera_id', 0)
-        self.declare_parameter('frame_width', 640)
-        self.declare_parameter('frame_height', 480)
         self.declare_parameter('max_recognition_attempts', 10)
         self.declare_parameter('recognition_timeout', 10.0)
         self.declare_parameter('face_database_path', '')
 
-        self.camera_id = int(self.get_parameter('camera_id').value)
-        self.frame_width = int(self.get_parameter('frame_width').value)
-        self.frame_height = int(self.get_parameter('frame_height').value)
         self.max_recognition_attempts = int(self.get_parameter('max_recognition_attempts').value)
         self.recognition_timeout = float(self.get_parameter('recognition_timeout').value)
 
@@ -39,14 +38,30 @@ class FaceIdentifyServer(Node):
         self.known_face_ids = []
         self.bridge = CvBridge()
 
+        # 订阅相机话题获取图像
+        self.current_image = None
+        self.image_received = False
+        self.image_sub = self.create_subscription(
+            Image, '/camera/rgb/image_raw', self._image_callback, 10
+        )
+        self.get_logger().info('已订阅相机话题: /camera/rgb/image_raw')
+
+        # 发布模式切换指令到模拟相机
+        self.mode_pub = self.create_publisher(String, '/camera/mode', 10)
+
         self.debug_image_pub = self.create_publisher(Image, '/face_identify/debug_image', 10)
-        self._srv = self.create_service(FaceIdentify, 'face_identify', self.handle_face_identify)
+        self._srv = self.create_service(FaceIdentify, '/face_identify', self.handle_face_identify)
 
-        self.cap = None
         self.load_face_database()
-        self.open_camera()
-
         self.get_logger().info('face_identify_server started')
+
+    def _image_callback(self, msg):
+        """接收相机图像"""
+        try:
+            self.current_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            self.image_received = True
+        except Exception as e:
+            self.get_logger().error(f'图像转换失败: {e}')
 
     def load_face_database(self):
         if not os.path.exists(self.face_database_path):
@@ -73,53 +88,34 @@ class FaceIdentifyServer(Node):
             except Exception as exc:
                 self.get_logger().warning(f'failed to load face {filename}: {exc}')
 
-    def open_camera(self):
-        try:
-            self.cap = cv2.VideoCapture(self.camera_id)
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_width)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_height)
-            if not self.cap.isOpened():
-                self.get_logger().warning('camera open failed')
-                return False
-            return True
-        except Exception as exc:
-            self.get_logger().warning(f'camera exception: {exc}')
-            return False
-
-    def capture_frame(self):
-        if self.cap is None or not self.cap.isOpened():
-            return None
-        for _ in range(5):
-            self.cap.grab()
-        ret, frame = self.cap.read()
-        if not ret:
-            return None
-        return frame
+        self.get_logger().info(f'已加载 {len(self.known_face_encodings)} 个人脸编码')
 
     def recognize_face(self, frame):
         if not self.known_face_encodings:
-            return -1, 0.0, frame
+            return -1, 0.0
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         locs = face_recognition.face_locations(rgb)
         if not locs:
-            return -1, 0.0, frame
+            return -1, 0.0
         encs = face_recognition.face_encodings(rgb, locs)
         if not encs:
-            return -1, 0.0, frame
+            return -1, 0.0
 
         distances = face_recognition.face_distance(self.known_face_encodings, encs[0])
         if len(distances) == 0:
-            return -1, 0.0, frame
+            return -1, 0.0
         idx = int(np.argmin(distances))
         min_distance = float(distances[idx])
         if min_distance < 0.6:
             confidence = (1.0 - min_distance) * 100.0
-            return int(self.known_face_ids[idx]), confidence, frame
-        return -1, 0.0, frame
+            return int(self.known_face_ids[idx]), confidence
+        return -1, 0.0
 
     def handle_face_identify(self, _request, response):
-        if self.cap is None or not self.cap.isOpened():
-            self.open_camera()
+        # 通知模拟相机切换到face模式
+        mode_msg = String()
+        mode_msg.data = 'face'
+        self.mode_pub.publish(mode_msg)
 
         start_time = time.time()
         last_debug = None
@@ -127,23 +123,31 @@ class FaceIdentifyServer(Node):
         for _ in range(self.max_recognition_attempts):
             if time.time() - start_time > self.recognition_timeout:
                 break
-            frame = self.capture_frame()
-            if frame is None:
+
+            if not self.image_received or self.current_image is None:
                 time.sleep(0.2)
                 continue
-            person_id, confidence, debug_image = self.recognize_face(frame)
-            last_debug = debug_image
+
+            frame = self.current_image.copy()
+            last_debug = frame
+            person_id, confidence = self.recognize_face(frame)
+
             if person_id > -1:
                 response.success = True
                 response.person_id = person_id
                 response.confidence = float(confidence)
                 response.message = f'recognized person_id={person_id}'
+                self.get_logger().info(
+                    f'人脸识别成功: person_id={person_id}, confidence={confidence:.1f}%'
+                )
                 return response
             time.sleep(0.2)
 
         if last_debug is not None:
             try:
-                self.debug_image_pub.publish(self.bridge.cv2_to_imgmsg(last_debug, encoding='bgr8'))
+                self.debug_image_pub.publish(
+                    self.bridge.cv2_to_imgmsg(last_debug, encoding='bgr8')
+                )
             except Exception:
                 pass
 
@@ -151,6 +155,7 @@ class FaceIdentifyServer(Node):
         response.person_id = -1
         response.confidence = 0.0
         response.message = 'unknown face'
+        self.get_logger().info('人脸识别: 未识别到已知人脸')
         return response
 
 
@@ -159,9 +164,9 @@ def main(args=None):
     node = FaceIdentifyServer()
     try:
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
-        if node.cap is not None and node.cap.isOpened():
-            node.cap.release()
         node.destroy_node()
         rclpy.shutdown()
 

@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>monitor</name>
-  <version>0.0.1</version>
-  <description>Mock monitor publishers and detection services (ROS2).</description>
+  <version>0.0.2</version>
+  <description>Monitor publishers and detection services including bed detection (YOLOv8 + CLIP).</description>
   <maintainer email="val@todo.todo">val</maintainer>
   <license>TODO</license>
 
@@ -13,6 +13,15 @@
   <depend>sensor_msgs</depend>
   <depend>cv_bridge</depend>
   <depend>interfaces</depend>
+
+  <!-- Python依赖 -->
+  <exec_depend>opencv-python</exec_depend>
+  <exec_depend>numpy</exec_depend>
+  <exec_depend>ultralytics</exec_depend>
+  <exec_depend>open-clip-torch</exec_depend>
+  <exec_depend>torch</exec_depend>
+  <exec_depend>torchvision</exec_depend>
+  <exec_depend>Pillow</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>

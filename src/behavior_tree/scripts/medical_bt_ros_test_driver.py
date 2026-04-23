@@ -46,7 +46,8 @@ class MedicalBtRosTestDriver(Node):
         self.call_signal_pub = self.create_publisher(Bool, '/call_signal', 10)
         self.patrol_trigger_pub = self.create_publisher(Bool, '/patrol_triggered', 1)
 
-        self.create_service(DetectAnomaly, '/detect_anomaly', self.handle_detect_anomaly)
+        # 注释掉检测服务，让行为树调用实际的检测节点
+        # self.create_service(DetectAnomaly, '/detect_anomaly', self.handle_detect_anomaly)
         self.create_service(FaceIdentify, '/face_identify', self.handle_face_identify)
         self.create_service(SetConfig, '/loadconfig/set_config', self.handle_set_config)
 
@@ -234,6 +235,11 @@ class MedicalBtRosTestDriver(Node):
             )
             self.publish_patrol_triggered(patrol_active, tick=tick)
             time.sleep(period)
+        
+        # 保持运行，持续发布最后一个状态，让Action服务器保持可用
+        self.get_logger().info('Tick cycle completed, keeping node alive for action servers...')
+        while rclpy.ok():
+            time.sleep(1.0)
 
 
 
