@@ -7,6 +7,9 @@ set -e
 PARALLEL_WORKERS=2        # 同时编译几个 package
 BUILD_JOBS=8              # 每个 package 使用多少核
 
+# 新增：用于存放指定的 pkg
+SELECTED_PKGS=()
+
 # ================================
 # 参数解析
 # ================================
@@ -21,15 +24,22 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     *)
-      echo "[ERROR] Unknown parameter: $1"
-      echo "Usage: $0 [--workers N] [--jobs N]"
-      exit 1
+      # 修改：把未知参数当作 pkg 名
+      SELECTED_PKGS+=("$1")
+      shift
       ;;
   esac
 done
 
 echo "[INFO] parallel workers: $PARALLEL_WORKERS"
 echo "[INFO] build jobs per package: $BUILD_JOBS"
+
+# 如果指定了 pkg，打印一下
+if [ ${#SELECTED_PKGS[@]} -gt 0 ]; then
+  echo "[INFO] Selected packages: ${SELECTED_PKGS[*]}"
+else
+  echo "[INFO] Building all packages"
+fi
 
 # ================================
 # 获取系统 Python
@@ -58,8 +68,8 @@ echo "[INFO] Building ROS 2 workspace at: $CURRENT_DIR"
 # ================================
 # 构建
 # ================================
-# fuck ros2
 colcon build \
+  ${SELECTED_PKGS:+--packages-select "${SELECTED_PKGS[@]}"} \
   --parallel-workers $PARALLEL_WORKERS \
   --cmake-args \
     -DPython3_EXECUTABLE=$SYSTEM_PYTHON \
