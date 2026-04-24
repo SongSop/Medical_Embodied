@@ -1,0 +1,113 @@
+xjrobot_bridge_node:
+  ros__parameters:
+    action_name: navigate
+    nav2_action_name: navigate_to_pose
+    default_frame_id: map
+    nav2_server_wait_timeout_sec: 5.0
+    nav2_request_timeout_sec: 5.0
+
+    # 点位配置说明：
+    # 1. waypoint_ids 用来声明“哪些点位条目需要被加载”
+    # 2. 每个条目都放在 waypoints.index_<N> 下
+    # 3. index_<N> 中的 N 会直接作为 Navigate.goal.target_index 使用
+    # 4. 后续你通常只需要修改各点的 name / frame_id / x / y / yaw
+    # 5. 如果某个点配置保留在 waypoints 里，但没有写进 waypoint_ids，
+    #    那么桥接节点启动时不会加载它
+    waypoint_ids:
+      - index_0
+      - index_1
+      - index_2
+      - index_3
+      - index_4
+      - index_5
+      - index_6
+      - index_7
+      - index_8
+      - index_9
+      - index_10
+      - index_11
+
+    waypoints:
+      index_0:
+        name: corridor_left_1
+        frame_id: map
+        x: 15.367
+        y: -8.344
+        yaw: 0.093
+
+      index_1:
+        name: corridor_left_2
+        frame_id: map
+        x: 15.359
+        y: -9.443
+        yaw: 0.054
+
+      index_2:
+        name: corridor_left_3
+        frame_id: map
+        x: 15.353
+        y: -10.898
+        yaw: 0.136
+
+      index_3:
+        name: corridor_left_4
+        frame_id: map
+        x: 15.213
+        y: -12.261
+        yaw: -3.108
+
+      index_4:
+        name: corridor_left_5
+        frame_id: map
+        x: 15.351
+        y: -13.806
+        yaw: 2.983
+
+      index_5:
+        name: corridor_left_6
+        frame_id: map
+        x: 15.400
+        y: -15.665
+        yaw: 3.024
+
+      index_6:
+        name: corridor_right_1
+        frame_id: map
+        x: 4.109
+        y: -8.437
+        yaw: 0.063
+
+      index_7:
+        name: corridor_right_2
+        frame_id: map
+        x: 4.133
+        y: -10.108
+        yaw: 0.250
+
+      index_8:
+        name: corridor_right_3
+        frame_id: map
+        x: 4.200
+        y: -12.031
+        yaw: 0.051
+
+      index_9:
+        name: corridor_right_4
+        frame_id: map
+        x: 4.209
+        y: -13.306
+        yaw: 3.041
+
+      index_10:
+        name: corridor_right_5
+        frame_id: map
+        x: 4.107
+        y: -14.836
+        yaw: 3.005
+
+      index_11:
+        name: corridor_right_6
+        frame_id: map
+        x: 4.175
+        y: -17.738
+        yaw: -1.464

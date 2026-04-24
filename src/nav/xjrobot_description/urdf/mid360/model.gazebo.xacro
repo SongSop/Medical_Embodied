@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<robot name="xjrobot" xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:arg name="2d_laser_visual" default="false"/>
+  <xacro:arg name="3d_laser_visual" default="true"/>
+  <xacro:arg name="imu_visual" default="false"/>
+
+  <xacro:include filename="$(find xjrobot_description)/urdf/controllers/plugins.gazebo.xacro"/>
+  <xacro:include filename="$(find xjrobot_description)/urdf/sensors/imu.gazebo.xacro"/>
+  <xacro:include filename="$(find xjrobot_description)/urdf/sensors/lidar_2d.gazebo.xacro"/>
+  <xacro:include filename="$(find xjrobot_description)/urdf/sensors/lidar_3d.gazebo.xacro"/>
+
+  <!-- 车体与轮子材质 -->
+  <gazebo reference="base_link">
+    <material>Gazebo/TurquoiseGlowOutline</material>
+  </gazebo>
+  <gazebo reference="fore_universal_wheel_link">
+    <material>Gazebo/Black</material>
+  </gazebo>
+  <gazebo reference="back_universal_wheel_link">
+    <material>Gazebo/Black</material>
+  </gazebo>
+  <gazebo reference="small_fore_wheel_link">
+    <material>Gazebo/Blue</material>
+  </gazebo>
+  <gazebo reference="small_back_wheel_link">
+    <material>Gazebo/Blue</material>
+  </gazebo>
+  <gazebo reference="left_wheel_link">
+    <material>Gazebo/Black</material>
+  </gazebo>
+  <gazebo reference="right_wheel_link">
+    <material>Gazebo/Black</material>
+  </gazebo>
+
+  <!-- 底盘插件 + 传感器插件 -->
+  <xacro:xjrobot_drive_plugins/>
+  <xacro:xjrobot_imu_gazebo imu_visual="$(arg imu_visual)"/>
+  <xacro:xjrobot_lidar_2d_gazebo laser_2d_visual="$(arg 2d_laser_visual)"/>
+  <xacro:xjrobot_lidar_3d_gazebo laser_3d_visual="$(arg 3d_laser_visual)"/>
+</robot>

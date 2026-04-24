@@ -1,0 +1,21 @@
+map_odom_tf_publisher:
+  ros__parameters:
+    # FastLIO 定位输出使用的全局坐标系
+    source_map_frame: "map_fastlio"
+    # 对外提供给导航系统的全局坐标系（通常就是 map）
+    output_map_frame: "map"
+    # 导航里程计坐标系
+    odom_frame: "odom"
+    # FastLIO 输出点云/位姿使用的雷达坐标系
+    fastlio_lidar_frame: "lidar_3d_frame_fastlio"
+    # 全局 TF 树里的雷达坐标系（URDF 上的雷达关节）
+    # 注意：当前算法不要求 fastlio_lidar_frame 与 global_lidar_frame 之间有显式 TF
+    global_lidar_frame: "lidar_3d_link"
+    # 发布频率（Hz）
+    publish_rate: 30.0
+    # TF 查询超时时间（秒）
+    tf_lookup_timeout_sec: 0.05
+    # 时间戳策略：
+    # now    -> 使用当前节点时钟（推荐）
+    # source -> 使用 map_fastlio->lidar 的源时间戳
+    stamp_mode: "now"

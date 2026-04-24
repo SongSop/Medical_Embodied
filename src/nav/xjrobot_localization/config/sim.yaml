@@ -1,0 +1,96 @@
+laser_mapping:
+    ros__parameters:
+        feature_extract_enable: false
+        point_filter_num: 3
+        max_iteration: 3
+        filter_size_surf: 0.5
+        filter_size_map: 0.5
+        cube_side_length: 1000.0
+        runtime_pos_log_enable: false
+        map_file_path: "/home/wu/nav2_0330/copy_0401/medical_embodied_ros2_ws/src/xjrobot_localization/maps/scans.pcd"
+
+        common:
+            lid_topic:  "/livox/scan3d/points"
+            imu_topic:  "/imu/data"
+            time_sync_en: false
+            time_offset_lidar_to_imu: 0.0
+
+        frames:
+            map_frame: "map_fastlio"
+            odom_frame: "odom_fastlio"
+            base_frame: "base_link_fastlio" # 实际上是imu系
+            lidar_frame: "lidar_3d_frame_fastlio" 
+
+        topics:
+            fastlio_odom: "/odom_fastlio"
+
+        preprocess:
+            lidar_type: 0
+            scan_line: 4
+            blind: 0.5
+            timestamp_unit: 3
+            scan_rate: 10
+
+        mapping:
+            acc_cov: 0.1
+            gyr_cov: 0.1
+            b_acc_cov: 0.0001
+            b_gyr_cov: 0.0001
+            fov_degree: 360.0
+            det_range: 100.0
+            extrinsic_est_en: true
+            extrinsic_T: [ -0.011, -0.02329, 0.04412 ]
+            extrinsic_R: [ 1., 0., 0.,
+                            0., 1., 0.,
+                            0., 0., 1.]
+
+        publish:
+            path_en: true
+            effect_map_en: false
+            map_en: true
+            scan_publish_en: true
+            dense_publish_en: false
+            scan_bodyframe_pub_en: true
+
+        pcd_save:
+            pcd_save_en: true
+            interval: -1
+
+global_localization:
+    ros__parameters:
+        map_voxel_size: 0.4
+        scan_voxel_size: 0.1
+        freq_localization: 0.5
+        freq_global_map: 0.25
+        localization_threshold: 0.8
+        fov: 6.28319
+        fov_far: 300
+        pcd_map_topic: "/map"
+        odom_topic: "/odom_fastlio"
+        map_frame: "map_fastlio"
+        status_print: true
+        status_clear_screen: true
+        status_print_period: 1.0
+        coarse_correspondence_distance: 15.0
+        fine_correspondence_distance: 3.0
+
+transform_fusion:
+    ros__parameters:
+        odom_topic: "/odom_fastlio"
+        map_child_frame: "odom_fastlio"
+        map_frame: "map_fastlio"
+
+fastlio_relative_odom_node:
+    ros__parameters:
+        fastlio_odom_topic: "/odom_fastlio"
+        fastlio_relative_odom_topic: "/odom_fastlio_relative"
+        fastlio_relative_odom_frame: "odom"
+        fastlio_relative_base_frame: "base_footprint"
+        fastlio_pose_covariance_diagonal: [0.02, 0.02, 1000000.0, 1000000.0, 1000000.0, 0.03]
+        fastlio_twist_covariance_diagonal: [1000.0, 1000.0, 1000000.0, 1000000.0, 1000000.0, 1000.0]
+
+map_publisher:
+    ros__parameters:
+        tf_frame: "map_fastlio"
+        cloud_topic: "/map"
+        period_ms_: 500

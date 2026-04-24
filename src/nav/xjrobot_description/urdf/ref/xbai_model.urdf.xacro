@@ -1,0 +1,479 @@
+<?xml version="1.0"?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+     Commit Version: 1.5.0-0-g9aa0fdb  Build Version: 1.5.7004.21443
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot
+  name="jz" xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:include filename="$(find xbai_simu)/urdf/xbai_mid360/xbai_model.gazebo.xacro"/>
+  <xacro:include filename="$(find xbai_simu)/urdf/xbai_mid360/common_properties.xacro"/>
+
+  <!-- Body -->
+  <link
+    name="base_link">
+    <inertial>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <mass
+        value="20" />
+      <inertia
+        ixx="0.64"
+        ixy="0.0"
+        ixz="0.0"
+        iyy="1.39"
+        iyz="0.0"
+        izz="1.95" />
+        <!-- 转动惯量计算参考：https://blog.csdn.net/qq_27865227/article/details/121223781 -->
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0.08"
+        rpy="0 0 0" />        
+        <!-- 表明可视化的车体部件相对于base_link的偏移为x正方向0.26m，z正方向0.08m（右手定则），
+             若xyz为0，代表车体部件在的几何中心与base_link重合， 此时base_link的实际位置位于两个驱动轮连线的中心点上
+             （base_link为默认世界坐标系，可认为是整个模型参考） -->
+      <geometry>
+        <box size="0.56 0.52 0.16" />
+      </geometry>
+      <material name="white" />
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0.08"
+        rpy="0 0 0" />
+      <geometry>
+        <box size="0.56 0.52 0.16" />
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- 添加dummy关节，消除警告：WARN-The root link base_link has an inertia... -->
+  <!-- <link name="dummy">
+   </link>
+  <joint name="dummy_joint" type="fixed">
+     <parent link="dummy"/>
+     <child link="base_link"/>
+   </joint> -->
+
+
+  <!-- fore_universal_wheel 指万向轮上侧的圆柱 z轴转动-->
+  <link
+    name="fore_universal_wheel_link">
+    <inertial>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <mass
+        value="0.5" />
+      <inertia
+        ixx="9.4792E-5"
+        ixy="0"
+        ixz="0"
+        iyy="1.5625E-4"
+        iyz="0"
+        izz="9.4792E-5" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <cylinder length="0.12" radius="0.025" />
+      </geometry>
+      <material name="black" />
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <cylinder length="0.12" radius="0.025" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_fuw"
+    type="continuous">
+    <origin
+      xyz="0.25 0 0"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="fore_universal_wheel_link" />
+    <axis
+      xyz="0 0 1" />
+    <safety_controller
+      k_velocity="0" />
+  </joint>
+
+  <!-- 小轮子 -->
+  <link
+    name="small_fore_wheel_link">
+    <inertial>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <mass
+        value="0.5" />
+      <inertia
+        ixx="9.4792E-5"
+        ixy="0"
+        ixz="0"
+        iyy="1.5625E-4"
+        iyz="0"
+        izz="9.4792E-5" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="1.57 0 0" />
+      <geometry>
+        <sphere radius="0.04" />
+      </geometry>
+      <material name="blue" />
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="1.57 0 0" />
+      <geometry>
+        <sphere radius="0.04" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_ffw"
+    type="continuous">
+    <origin
+      xyz="0 0 -0.06"
+      rpy="0 0 0" />
+    <parent
+      link="fore_universal_wheel_link" />
+    <child
+      link="small_fore_wheel_link" />
+    <axis
+      xyz="0 1 0" />
+    <safety_controller
+      k_velocity="0" />
+  </joint>
+
+  <!-- back_universal_wheel -->
+  <link
+    name="back_universal_wheel_link">
+    <inertial>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <mass
+        value="0.5" />
+      <inertia
+        ixx="9.4792E-5"
+        ixy="0"
+        ixz="0"
+        iyy="1.5625E-4"
+        iyz="0"
+        izz="9.4792E-5" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <cylinder length="0.12" radius="0.025" />
+      </geometry>
+      <material name="black" />
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <cylinder length="0.12" radius="0.025" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_buw"
+    type="continuous">
+    <origin
+      xyz="-0.25 0 0"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="back_universal_wheel_link" />
+    <axis
+      xyz="0 0 1" />
+    <safety_controller
+      k_velocity="0" />
+  </joint>
+
+  <link
+    name="small_back_wheel_link">
+    <inertial>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <mass
+        value="0.5" />
+      <inertia
+        ixx="9.4792E-5"
+        ixy="0"
+        ixz="0"
+        iyy="1.5625E-4"
+        iyz="0"
+        izz="9.4792E-5" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="1.57 0 0" />
+      <geometry>
+        <sphere radius="0.04" />
+      </geometry>
+      <material name="blue" />
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="1.57 0 0" />
+      <geometry>
+        <sphere radius="0.04" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_bfw"
+    type="continuous">
+    <origin
+      xyz="0 0 -0.06"
+      rpy="0 0 0" />
+    <parent
+      link="back_universal_wheel_link" />
+    <child
+      link="small_back_wheel_link" />
+    <axis
+      xyz="0 1 0" />
+    <safety_controller
+      k_velocity="0" />
+  </joint>
+
+  <link
+    name="left_wheel_link">
+    <inertial>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <mass
+        value="2" />
+      <inertia
+        ixx="0.002867"
+        ixy="0"
+        ixz="0"
+        iyy="0.0049"
+        iyz="0"
+        izz="0.002867" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="1.57 0 0" />
+      <geometry>
+        <cylinder length="0.05" radius="0.1" />
+      </geometry>
+      <material name="black" />
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="1.57 0 0" />
+      <geometry>
+        <cylinder length="0.05" radius="0.1" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_lw"
+    type="continuous">
+    <origin
+      xyz="0 0.28 0"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="left_wheel_link" />
+    <axis
+      xyz="0 1 0" />
+    <safety_controller
+      k_velocity="0" />
+  </joint>
+
+  <link
+    name="right_wheel_link">
+    <inertial>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <mass
+        value="2" />
+      <inertia
+        ixx="0.002867"
+        ixy="0"
+        ixz="0"
+        iyy="0.0049"
+        iyz="0"
+        izz="0.002867" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="1.57 0 0" />
+      <geometry>
+        <cylinder length="0.05" radius="0.1" />
+      </geometry>
+      <material name="black" />
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="1.57 0 0" />
+      <geometry>
+        <cylinder length="0.05" radius="0.1" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="joint_rw"
+    type="continuous">
+    <origin
+      xyz="0 -0.28 0"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="right_wheel_link" />
+    <axis
+      xyz="0 1 0" />
+    <safety_controller
+      k_velocity="0" />
+  </joint>
+
+   <!-- Imu -->
+  <link name="imu_link"/>
+  <joint
+    name="joint_imu"
+    type="fixed">
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <parent
+      link="lidar_3d_link" />
+    <child
+      link="imu_link" />
+    <axis
+      xyz="0 0 0.2" />
+    <safety_controller
+      k_velocity="0" />
+  </joint>
+
+  <!-- 2D Lidar -->
+  <link name="lidar_2d_link">
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <cylinder length="0.025" radius="0.04" />
+      </geometry>
+      <material name="orange" />
+    </visual>
+    <visual>
+      <origin
+        xyz="0 0 -0.03"
+        rpy="0 0 0" />
+      <geometry>
+        <cylinder length="0.08" radius="0.01" />
+      </geometry>
+      <material name="orange" />
+    </visual>
+  </link>
+  <joint
+    name="joint_lidar_"
+    type="fixed">
+    <origin
+      xyz="0.16 0 0.22"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="lidar_2d_link" />
+    <axis
+      xyz="0 0 0" />
+    <safety_controller
+      k_velocity="0" />
+  </joint>
+
+  <!-- 3D lidar -->
+  <link name="lidar_3d_link">
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <cylinder length="0.06" radius="0.0325" />
+      </geometry>
+      <material name="grey" />
+    </visual>
+    <!-- <visual>
+      <origin
+        xyz="0 0 -0.06"
+        rpy="0 0 0" />
+      <geometry>
+        <cylinder length="0.1" radius="0.0033" />
+      </geometry>
+      <material name="red" />
+    </visual> -->
+  </link>
+  <joint
+    name="joint_lidar_3d"
+    type="fixed">
+    <origin
+      xyz="0.285 0 0.165"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="lidar_3d_link" />
+    <axis
+      xyz="0 0 0" />
+    <safety_controller
+      k_velocity="0" />
+  </joint>
+  <!-- Camera -->
+  <!-- <link name="camera_front_base">
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <box size="0.02 0.04 0.04" />
+      </geometry>
+      <material name="orange" />
+    </visual>
+  </link>
+  <joint name="camera_front_base_joint" type="fixed">
+    <axis xyz="0 0 0" />
+    <origin xyz="-0.19 0 0.10" rpy="0 -0.523 0"/> 
+    <parent link="base_link"/>
+    <child link="camera_front_base"/>
+  </joint>
+  <link name="camera_front_link" />
+  <joint name="camera_front_joint" type="fixed">
+    <axis xyz="0 0 0" />
+    <origin xyz="0 0 0" rpy="-1.57 0 0"/>
+    <parent link="camera_front_base"/>
+    <child link="camera_front_link"/>
+  </joint> -->
+
+</robot>

@@ -1,0 +1,3 @@
+bool clear_after_get
+---
+LlmDialogHistoryMsg[] history

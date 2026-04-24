@@ -125,7 +125,7 @@ struct PatrolContext
     int cycles_total = 1;
     int cycles_remaining = 1;
     int point_index = 0;
-    std::vector<std::string> points = {"p0", "p1"};
+    std::vector<int> points = {0,1,2,3,4};
     bool complete = false;
 };
 
@@ -151,7 +151,7 @@ void initializeBlackboardDefaults(const Blackboard::Ptr& bb)
     bb->set(NodePort::face_confidence, 0.0f);
     bb->set(NodePort::summary, std::string(""));
     bb->set(NodePort::context, std::string(""));
-    bb->set(NodePort::patrol_point, std::string(""));
+    bb->set(NodePort::patrol_point, -1);
     bb->set(NodePort::patrol_triggered, false);
     bb->set(NodePort::battery_soc, 100.0f);
     bb->set(NodePort::battery_charging, false);
@@ -565,7 +565,7 @@ public:
         const std::shared_ptr<PatrolContext>& patrol_ctx)
         : SyncActionNode(name, config), patrol_ctx_(patrol_ctx) {}
 
-    static PortsList providedPorts() { return {OutputPort<std::string>(NodePort::patrol_point)}; }
+    static PortsList providedPorts() { return {OutputPort<int>(NodePort::patrol_point)}; }
 
     NodeStatus tick() override
     {
@@ -586,7 +586,7 @@ public:
             index = 0;
         }
 
-        const std::string point = patrol_ctx_->points[index];
+        const int point = patrol_ctx_->points[index];
         index += 1;
         if (index >= static_cast<int>(patrol_ctx_->points.size()))
         {
@@ -800,7 +800,7 @@ int main(int argc, char** argv)
                     patrol_ctx->cycles_total = 2;
                     patrol_ctx->cycles_remaining = 2;
                     patrol_ctx->point_index = 0;
-                    patrol_ctx->points = {"p0", "p1"};
+                    patrol_ctx->points = {0,1,2};
                     patrol_ctx->complete = false;
                     return NodeStatus::SUCCESS;
                 }
@@ -836,11 +836,12 @@ int main(int argc, char** argv)
     },{InputPort<int>(NodePort::bed_id)});
     
     factory.registerSimpleCondition("IsPatrolComplete", [patrol_ctx](TreeNode&) {
-        if(patrol_ctx->cycles_remaining > 0 ){
-            //TODO remind the patrol have not finished
-            std::cout<<"Patrol have not completed, remaining cycles "<<patrol_ctx->cycles_remaining<<"\n";
+        if (patrol_ctx->cycles_remaining <= 0) {
             return NodeStatus::SUCCESS;
         }
+        // cycles_remaining 仍大于 0，说明巡检尚未完成，应继续走 PatrolRun 分支。
+        std::cout << "Patrol have not completed, remaining cycles "
+                  << patrol_ctx->cycles_remaining << "\n";
         return NodeStatus::FAILURE;
     });
     factory.registerSimpleCondition(
