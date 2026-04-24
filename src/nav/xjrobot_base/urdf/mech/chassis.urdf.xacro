@@ -1,0 +1,205 @@
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- 实机专用底盘主体与轮系。
+       当前几何与关节关系先和仿真版本保持一致，后续可只改这份，不影响仿真。 -->
+  <xacro:macro name="xjrobot_chassis">
+    <link name="base_footprint"/>
+
+    <link name="base_link">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <mass value="20" />
+        <inertia ixx="0.64" ixy="0.0" ixz="0.0" iyy="1.39" iyz="0.0" izz="1.95" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0.08" rpy="0 0 0" />
+        <geometry>
+          <box size="0.52 0.48 0.16" />
+        </geometry>
+        <material name="white" />
+      </visual>
+      <collision>
+        <origin xyz="0 0 0.08" rpy="0 0 0" />
+        <geometry>
+          <box size="0.52 0.48 0.16" />
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="base_footprint_joint" type="fixed">
+      <!-- 固定 TF: base_footprint -> base_link
+           实机版本当前与仿真保持一致，xyz=(0, 0, 0), rpy=(0, 0, 0)。
+           如果后续你希望实机主车体相对地面投影存在细微偏移或安装角，请修改这里。 -->
+      <origin xyz="0 0 0.125" rpy="0 0 0" />
+      <parent link="base_footprint" />
+      <child link="base_link" />
+    </joint>
+
+    <link name="fore_universal_wheel_link">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <mass value="0.5" />
+        <inertia ixx="9.4792E-5" ixy="0" ixz="0" iyy="1.5625E-4" iyz="0" izz="9.4792E-5" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <cylinder length="0.12" radius="0.025" />
+        </geometry>
+        <material name="black" />
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <cylinder length="0.12" radius="0.025" />
+        </geometry>
+      </collision>
+    </link>
+    <joint name="joint_fuw" type="continuous">
+      <origin xyz="0.25 0 0" rpy="0 0 0" />
+      <parent link="base_link" />
+      <child link="fore_universal_wheel_link" />
+      <axis xyz="0 0 1" />
+      <safety_controller k_velocity="0" />
+    </joint>
+
+    <link name="small_fore_wheel_link">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <mass value="0.5" />
+        <inertia ixx="9.4792E-5" ixy="0" ixz="0" iyy="1.5625E-4" iyz="0" izz="9.4792E-5" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="1.57 0 0" />
+        <geometry>
+          <sphere radius="0.04" />
+        </geometry>
+        <material name="blue" />
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="1.57 0 0" />
+        <geometry>
+          <sphere radius="0.04" />
+        </geometry>
+      </collision>
+    </link>
+    <joint name="joint_ffw" type="continuous">
+      <origin xyz="0 0 -0.06" rpy="0 0 0" />
+      <parent link="fore_universal_wheel_link" />
+      <child link="small_fore_wheel_link" />
+      <axis xyz="0 1 0" />
+      <safety_controller k_velocity="0" />
+    </joint>
+
+    <link name="back_universal_wheel_link">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <mass value="0.5" />
+        <inertia ixx="9.4792E-5" ixy="0" ixz="0" iyy="1.5625E-4" iyz="0" izz="9.4792E-5" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <cylinder length="0.12" radius="0.025" />
+        </geometry>
+        <material name="black" />
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <cylinder length="0.12" radius="0.025" />
+        </geometry>
+      </collision>
+    </link>
+    <joint name="joint_buw" type="continuous">
+      <origin xyz="-0.25 0 0" rpy="0 0 0" />
+      <parent link="base_link" />
+      <child link="back_universal_wheel_link" />
+      <axis xyz="0 0 1" />
+      <safety_controller k_velocity="0" />
+    </joint>
+
+    <link name="small_back_wheel_link">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <mass value="0.5" />
+        <inertia ixx="9.4792E-5" ixy="0" ixz="0" iyy="1.5625E-4" iyz="0" izz="9.4792E-5" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="1.57 0 0" />
+        <geometry>
+          <sphere radius="0.04" />
+        </geometry>
+        <material name="blue" />
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="1.57 0 0" />
+        <geometry>
+          <sphere radius="0.04" />
+        </geometry>
+      </collision>
+    </link>
+    <joint name="joint_bfw" type="continuous">
+      <origin xyz="0 0 -0.06" rpy="0 0 0" />
+      <parent link="back_universal_wheel_link" />
+      <child link="small_back_wheel_link" />
+      <axis xyz="0 1 0" />
+      <safety_controller k_velocity="0" />
+    </joint>
+
+    <link name="left_wheel_link">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <mass value="2" />
+        <inertia ixx="0.002867" ixy="0" ixz="0" iyy="0.0049" iyz="0" izz="0.002867" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="1.57 0 0" />
+        <geometry>
+          <cylinder length="0.05" radius="0.1" />
+        </geometry>
+        <material name="black" />
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="1.57 0 0" />
+        <geometry>
+          <cylinder length="0.05" radius="0.1" />
+        </geometry>
+      </collision>
+    </link>
+    <joint name="joint_lw" type="continuous">
+      <origin xyz="0 0.28 0" rpy="0 0 0" />
+      <parent link="base_link" />
+      <child link="left_wheel_link" />
+      <axis xyz="0 1 0" />
+      <safety_controller k_velocity="0" />
+    </joint>
+
+    <link name="right_wheel_link">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <mass value="2" />
+        <inertia ixx="0.002867" ixy="0" ixz="0" iyy="0.0049" iyz="0" izz="0.002867" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="1.57 0 0" />
+        <geometry>
+          <cylinder length="0.05" radius="0.1" />
+        </geometry>
+        <material name="black" />
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="1.57 0 0" />
+        <geometry>
+          <cylinder length="0.05" radius="0.1" />
+        </geometry>
+      </collision>
+    </link>
+    <joint name="joint_rw" type="continuous">
+      <origin xyz="0 -0.28 0" rpy="0 0 0" />
+      <parent link="base_link" />
+      <child link="right_wheel_link" />
+      <axis xyz="0 1 0" />
+      <safety_controller k_velocity="0" />
+    </joint>
+  </xacro:macro>
+</robot>

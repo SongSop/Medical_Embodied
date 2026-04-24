@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<robot name="xjrobot" xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- 实机专用主组装文件。
+       这份 xacro 独立放在 xjrobot_base 下，目的是让实机和仿真的固定关节关系可以分别维护。 -->
+  <xacro:include filename="$(find xjrobot_base)/urdf/common_properties.xacro"/>
+  <xacro:include filename="$(find xjrobot_base)/urdf/mech/chassis.urdf.xacro"/>
+  <xacro:include filename="$(find xjrobot_base)/urdf/sensors/lidar_2d.urdf.xacro"/>
+  <xacro:include filename="$(find xjrobot_base)/urdf/sensors/lidar_3d.urdf.xacro"/>
+  <xacro:include filename="$(find xjrobot_base)/urdf/sensors/imu.urdf.xacro"/>
+
+  <xacro:xjrobot_chassis/>
+  <xacro:xjrobot_lidar_2d/>
+  <xacro:xjrobot_lidar_3d/>
+  <xacro:xjrobot_imu/>
+</robot>

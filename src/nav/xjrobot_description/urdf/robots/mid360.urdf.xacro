@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<robot name="xjrobot" xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- 主组装文件：按 lino 模版拆分为 mech/sensors/controllers -->
+  <xacro:include filename="$(find xjrobot_description)/urdf/common_properties.xacro"/>
+  <xacro:include filename="$(find xjrobot_description)/urdf/mid360/model.gazebo.xacro"/>
+  <xacro:include filename="$(find xjrobot_description)/urdf/mech/chassis.urdf.xacro"/>
+  <xacro:include filename="$(find xjrobot_description)/urdf/sensors/lidar_2d.urdf.xacro"/>
+  <xacro:include filename="$(find xjrobot_description)/urdf/sensors/lidar_3d.urdf.xacro"/>
+  <xacro:include filename="$(find xjrobot_description)/urdf/sensors/imu.urdf.xacro"/>
+
+  <xacro:xjrobot_chassis/>
+  <!-- 区分 2D / 3D 雷达结构，分别独立宏 -->
+  <xacro:xjrobot_lidar_2d/>
+  <xacro:xjrobot_lidar_3d/>
+  <xacro:xjrobot_imu/>
+</robot>

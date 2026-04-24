@@ -1,0 +1,48 @@
+/**:
+  ros__parameters:
+    # 底盘控制节点只订阅最终安全速度口：
+    # /cmd_vel_safe 应当是经过 Nav2 平滑与 collision_monitor 约束后的唯一执行速度。
+    cmd_vel_topic: /cmd_vel_safe
+    real_cmd_topic: /realcmd_ctrl
+    can_feedback_topic: /can_msg_fb
+    joy_topic_default: /joy
+    joy_topic_backup: /joy_node_usb/joy
+    output_odom_topic: /odom/unfiltered
+    wheel_radius: 0.2032
+    wheel_distance: 0.477
+    wheel_diameter_inch: 8.0
+    joy_liner_k: 40
+    joy_angular_k: 17
+    command_loop_hz: 100.0
+    receive_loop_hz: 500.0
+    control_rate: 50.0
+    speed_compensation_ratio: 0.9523809524
+    reverse_drive_direction: true
+    max_wheel_rpm: 150
+    can1_baud_t0: 0
+    can1_baud_t1: 28
+    # wheel_odom_fusion_node 现在只输出纯轮式原始里程计；
+    # IMU 融合与最终 odom->base_footprint TF 统一交给 EKF 负责
+    reverse_heading: false
+    odom_frame: odom
+    base_frame: base_footprint
+    publish_odom_tf: false
+    # 轮速计只作为短时局部运动先验：
+    # 不打滑时其线速度/角速度较准，因此给 vx / wz 相对较小协方差；
+    # 但仍保留足够不确定性，给 FastLIO 在中低频上纠偏留出话语权。
+    wheel_odom_pose_covariance_diagonal: [1000000.0, 1000000.0, 1000000.0, 1000000.0, 1000000.0, 1000000.0]
+    wheel_odom_twist_covariance_diagonal: [0.03, 1000.0, 1000000.0, 1000000.0, 1000000.0, 0.06]
+    # MID360 安装角补偿统一在中间节点完成：
+    # 驱动保持原始 livox_frame/raw topic，节点同时旋转点云和 IMU，
+    # 再输出到符合整车约定的 lidar_3d_link / imu_link。
+    raw_lidar_topic: /livox/lidar
+    rotated_lidar_topic: /livox/lidar_rotated
+    rotated_lidar_points_topic: /livox/lidar_rotated/points
+    raw_imu_topic: /livox/imu
+    rotated_imu_topic: /livox/imu_rotated
+    fastlio_lidar_frame_id: lidar_3d_frame_fastlio
+    nav_lidar_frame_id: lidar_3d_link
+    rotated_imu_frame_id: imu_link
+    mount_roll_deg: 25.0
+    mount_pitch_deg: 0.0
+    mount_yaw_deg: 90.0

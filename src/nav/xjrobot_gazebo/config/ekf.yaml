@@ -1,0 +1,34 @@
+ekf_filter_node:
+  ros__parameters:
+    # EKF 输出频率，建议与里程计发布频率同量级
+    frequency: 50.0
+    # 地面移动机器人通常开启 2D 模式，忽略 z/roll/pitch 的状态耦合
+    two_d_mode: true
+    # 由 EKF 发布 odom -> base_footprint 变换
+    publish_tf: true
+
+    # 经典导航三层坐标：
+    # map(全局定位) -> odom(连续里程计) -> base_footprint(机体2D中心)
+    map_frame: map
+    odom_frame: odom
+    # 与 lino 对齐：EKF 输出 odom -> base_footprint；
+    # base_footprint -> base_link 由 URDF 固定关节提供，不在 EKF 中重复发布
+    base_link_frame: base_footprint
+    # 纯导航场景常用 odom 作为 EKF 世界系，保证局部连续性
+    world_frame: odom
+
+    # 参考 linorobot2：使用底盘原始里程计 + IMU 做融合
+    # x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az
+    odom0: odom/unfiltered
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  true,  false,
+                   false, false, true,
+                   false, false, false]
+
+    imu0: imu/data
+    imu0_config: [false, false, false,
+                  false, false, false,
+                  false, false, false,
+                  false, false, true,
+                  false, false, false]

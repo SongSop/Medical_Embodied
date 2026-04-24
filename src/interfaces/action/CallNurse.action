@@ -1,0 +1,8 @@
+# goal
+int32[] bed_ids
+string[] summarys
+---
+interfaces/ActionStatus status
+string message
+---
+string progress

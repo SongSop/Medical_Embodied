@@ -1,0 +1,11 @@
+<root BTCPP_format="4">
+    <BehaviorTree ID="RFtree">
+        <ReactiveFallback name="PrioritySelector">
+            <IsEmergency flag="{emergency_flag}"/>
+            <NeedCharge state="{battery_state}"/>
+            <IsCalled words="{called}"/>
+            <PerformTask/>
+            <IdleWait/>
+        </ReactiveFallback>
+    </BehaviorTree>
+</root>

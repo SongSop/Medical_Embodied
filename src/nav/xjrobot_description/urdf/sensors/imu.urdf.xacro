@@ -1,0 +1,16 @@
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- IMU 本体（仅 link/joint），对齐 lino：直接挂在 base_link -->
+  <xacro:macro name="xjrobot_imu">
+    <link name="imu_link"/>
+
+    <joint name="joint_imu" type="fixed">
+      <!-- 固定 TF: base_link -> imu_link
+           当前与仿真保持一致，设置为 xyz=(0.285, 0, 0.165), rpy=(0, 0, 0)。
+           这里保持与原模型等效安装位置（原来是相对 lidar_3d_link 的 0 位姿）。
+           如果后续 IMU 从雷达处移走，请直接修改这里。 -->
+      <origin xyz="0.285 0 0.165" rpy="0 0 0" />
+      <parent link="base_link" />
+      <child link="imu_link" />
+    </joint>
+  </xacro:macro>
+</robot>

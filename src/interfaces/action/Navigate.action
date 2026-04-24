@@ -1,0 +1,8 @@
+# goal
+int32 target_index
+int32 nav_type
+---
+interfaces/ActionStatus status
+string message
+---
+float32 progress

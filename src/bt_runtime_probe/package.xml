@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>bt_runtime_probe</name>
+  <version>0.0.1</version>
+  <description>Probe package for BehaviorTree runtime linking.</description>
+  <maintainer email="probe@example.com">probe</maintainer>
+  <license>MIT</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

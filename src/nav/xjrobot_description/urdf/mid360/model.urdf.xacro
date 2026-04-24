@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<robot name="xjrobot" xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- 兼容旧路径：仍保留 mid360/model.urdf.xacro，但内部已切换到模块化结构 -->
+  <xacro:include filename="$(find xjrobot_description)/urdf/common_properties.xacro"/>
+  <xacro:include filename="$(find xjrobot_description)/urdf/mid360/model.gazebo.xacro"/>
+  <xacro:include filename="$(find xjrobot_description)/urdf/mech/chassis.urdf.xacro"/>
+  <xacro:include filename="$(find xjrobot_description)/urdf/sensors/lidar_2d.urdf.xacro"/>
+  <xacro:include filename="$(find xjrobot_description)/urdf/sensors/lidar_3d.urdf.xacro"/>
+  <xacro:include filename="$(find xjrobot_description)/urdf/sensors/imu.urdf.xacro"/>
+
+  <xacro:xjrobot_chassis/>
+  <xacro:xjrobot_lidar_2d/>
+  <xacro:xjrobot_lidar_3d/>
+  <xacro:xjrobot_imu/>
+</robot>

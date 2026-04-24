@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4" project_name="Project">
+    <include path="medical.xml"/>
+    <!-- Description of Node Models (used by Groot) -->
+    <TreeNodesModel>
+        <Action ID="AlertChargeFault"
+                editable="true"/>
+        <Action ID="AlertFault"
+                editable="true">
+          <input_port name="fault_type"/>
+        </Action>
+        <Action ID="AlertUnfinishedOnce"
+                editable="true">
+          <inout_port name="unfinished_warned"/>
+        </Action>
+        <Action ID="CallDutyNurse"
+                editable="true">
+          <input_port name="bed_id"/>
+          <input_port name="summary"/>
+          <output_port name="call_nurse"/>
+        </Action>
+        <Action ID="ClearInteractionMode"
+                editable="true">
+          <inout_port name="interaction_mode"/>
+        </Action>
+        <Action ID="ClearPatrolTrigger"
+                editable="true">
+          <inout_port name="patrol_triggered"/>
+        </Action>
+        <Action ID="Detect_BedProcess"
+                editable="true">
+          <input_port name="mode"/>
+          <input_port name="patrol_bed_id"/>
+          <output_port name="bed_queue"/>
+          <output_port name="interaction_mode"/>
+          <output_port name="context"/>
+        </Action>
+        <Action ID="FaceIdentify"
+                editable="true">
+          <output_port name="person_id"/>
+          <output_port name="face_confidence"/>
+        </Action>
+        <Action ID="IdleWait"
+                editable="true"/>
+        <Condition ID="IsBatteryLow"
+                   editable="true">
+          <input_port name="battery_soc"/>
+        </Condition>
+        <Condition ID="IsCallSignal"
+                   editable="true">
+          <input_port name="call_signal"/>
+        </Condition>
+        <Condition ID="IsInteractionMode"
+                   editable="true">
+          <input_port name="mode"/>
+        </Condition>
+        <Condition ID="IsLocalizationFault"
+                   editable="true">
+          <input_port name="localization_fault"/>
+        </Condition>
+        <Condition ID="IsNavFault"
+                   editable="true">
+          <input_port name="nav_fault"/>
+        </Condition>
+        <Condition ID="IsPatrolComplete"
+                   editable="true"/>
+        <Condition ID="IsPatrolIncomplete"
+                   editable="true"/>
+        <Condition ID="IsPatrolTriggered"
+                   editable="true">
+          <input_port name="patrol_triggered"/>
+        </Condition>
+        <Condition ID="IsSelfFault"
+                   editable="true">
+          <input_port name="self_fault"/>
+        </Condition>
+        <Action ID="LLMInteraction"
+                editable="true">
+          <input_port name="mode"/>
+          <input_port name="person_id"/>
+          <input_port name="context"/>
+          <output_port name="call_nurse"/>
+          <output_port name="summary"/>
+        </Action>
+        <Action ID="LoadConfig"
+                editable="true">
+          <output_port name="config_loaded"/>
+          <output_port name="patrol_started"/>
+          <output_port name="bed_id"/>
+          <output_port name="bed_queue"/>
+          <output_port name="anomaly"/>
+          <output_port name="call_nurse"/>
+          <output_port name="nurse_connected"/>
+          <output_port name="call_signal"/>
+          <output_port name="person_id"/>
+          <output_port name="face_confidence"/>
+          <output_port name="summary"/>
+          <output_port name="interaction_mode"/>
+          <output_port name="context"/>
+          <output_port name="unfinished_warned"/>
+          <output_port name="charge_resume_percent"/>
+          <output_port name="localization_fault"/>
+          <output_port name="nav_fault"/>
+          <output_port name="self_fault"/>
+        </Action>
+        <Action ID="NavgateTo"
+                editable="true">
+          <input_port name="target"/>
+          <input_port name="nav_type"/>
+        </Action>
+        <Action ID="NextPatrolPoint"
+                editable="true">
+          <output_port name="patrol_point"/>
+        </Action>
+        <Action ID="RestoreContext"
+                editable="true"/>
+        <Action ID="SaveContext"
+                editable="true"/>
+        <Action ID="SelectNextBed"
+                editable="true">
+          <inout_port name="bed_queue"/>
+          <output_port name="bed_id"/>
+        </Action>
+        <Action ID="WaitChargeUntil"
+                editable="true">
+          <input_port name="percent"/>
+        </Action>
+      </TreeNodesModel>
+</root>
