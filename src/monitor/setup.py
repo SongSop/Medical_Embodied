@@ -26,11 +26,11 @@ def collect_data_files():
             face_db_files.append(f'face_database/{file}')
     data_files.append(('share/' + package_name + '/face_database', face_db_files))
     
-    # config 文件
+    # config 文件 (yaml + json)
     config_files = []
     if os.path.exists('config'):
         for file in os.listdir('config'):
-            if file.endswith('.yaml') or file.endswith('.yml'):
+            if file.endswith('.yaml') or file.endswith('.yml') or file.endswith('.json'):
                 config_files.append(f'config/{file}')
     data_files.append(('share/' + package_name + '/config', config_files))
     

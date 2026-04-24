@@ -10,6 +10,7 @@
 服务接口: /detect_anomaly (继承自interfaces/DetectAnomaly.srv)
 """
 import os
+import json
 import rclpy
 import logging
 from rclpy.node import Node
@@ -52,6 +53,15 @@ class BedDetectionNode(Node):
         current_file_dir = os.path.dirname(os.path.abspath(__file__))
         src_monitor_dir = os.path.dirname(current_file_dir)  # monitor目录
         self.src_models_dir = os.path.join(src_monitor_dir, 'models')
+
+        # 加载巡诊点-床位映射配置
+        self.declare_parameter('patrol_bed_mapping_path', '')
+        mapping_param = self.get_parameter('patrol_bed_mapping_path').value
+        if mapping_param:
+            mapping_path = mapping_param
+        else:
+            mapping_path = os.path.join(src_monitor_dir, 'config', 'patrol_bed_mapping.json')
+        self.patrol_bed_map = self._load_patrol_bed_mapping(mapping_path)
         
         # 记录路径信息
         self.get_logger().info(f'Python文件目录: {current_file_dir}')
@@ -172,6 +182,56 @@ class BedDetectionNode(Node):
             self.handle_detect_request
         )
         self.get_logger().info('床位检测服务已创建: /detect_anomaly')
+
+    def _load_patrol_bed_mapping(self, path):
+        """加载巡诊点-床位映射JSON"""
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            mapping = {}
+            for item in data.get('patrol_points', []):
+                pid = item['patrol_id']
+                # 新格式: beds = [{"detection_index": 0, "bed_id": 1}, ...]
+                # 旧格式兼容: bed_ids = [1, 2, 3, ...]
+                if 'beds' in item:
+                    bed_map = {}
+                    for bed_info in item['beds']:
+                        bed_map[bed_info['detection_index']] = bed_info['bed_id']
+                    mapping[pid] = bed_map
+                elif 'bed_ids' in item:
+                    bed_map = {i: bid for i, bid in enumerate(item['bed_ids'])}
+                    mapping[pid] = bed_map
+            self.get_logger().info(f'加载巡诊点-床位映射: {path}, {len(mapping)} 个巡诊点')
+            for pid, bed_map in mapping.items():
+                self.get_logger().info(
+                    f'  巡诊点 {pid} -> ' +
+                    ', '.join(f'det[{k}]=bed{v}' for k, v in sorted(bed_map.items()))
+                )
+            return mapping
+        except Exception as e:
+            self.get_logger().warn(f'加载巡诊点-床位映射失败: {e}, 使用默认顺序编号')
+            return {}
+
+    def _get_bed_id(self, patrol_id, detection_index):
+        """根据巡诊点ID和YOLO检测框索引获取对应的导航床位编号"""
+        if patrol_id in self.patrol_bed_map:
+            bed_map = self.patrol_bed_map[patrol_id]
+            if detection_index in bed_map:
+                return bed_map[detection_index]
+        # 无映射时按顺序编号 (index 0 -> bed_id 1)
+        return detection_index + 1
+
+    def _get_detection_index_for_bed(self, bed_id):
+        """根据导航床位编号反查YOLO检测框索引，遍历所有巡诊点映射"""
+        for pid, bed_map in self.patrol_bed_map.items():
+            for det_idx, bid in bed_map.items():
+                if bid == bed_id:
+                    self.get_logger().info(
+                        f'床位 {bed_id} 在巡诊点 {pid} 映射中, 检测索引 {det_idx}'
+                    )
+                    return det_idx
+        # 无映射时 bed_id-1 即索引
+        return bed_id - 1
 
     def image_callback(self, msg):
         """接收相机图像"""
@@ -304,10 +364,11 @@ class BedDetectionNode(Node):
     def _handle_area_mode(self, request, response):
         """
         Area模式处理逻辑
-        扫描所有床位,返回有人床位的ID列表
+        根据巡诊点ID扫描对应床位,返回有人床位的ID列表
         """
         self._switch_camera_mode('area')
-        self.get_logger().info(f'开始Area模式检测, 区域ID: {request.area_bed_id}')
+        patrol_id = request.area_bed_id
+        self.get_logger().info(f'开始Area模式检测, 巡诊点ID: {patrol_id}')
 
         # 使用YOLOv8检测所有床位
         bed_detections = self.detect_beds_with_yolo(self.current_image)
@@ -320,7 +381,8 @@ class BedDetectionNode(Node):
             response.urgencies = []
             return response
 
-        self.get_logger().info(f'检测到 {len(bed_detections)} 个床位')
+        num_detected = len(bed_detections)
+        self.get_logger().info(f'检测到 {num_detected} 个床位')
 
         occupied_beds = []
         urgencies = []
@@ -341,22 +403,20 @@ class BedDetectionNode(Node):
             # 使用CLIP判断是否有人
             is_person, person_score = self.detect_person_with_clip(bed_image)
 
+            # 从映射表获取床位导航编号
+            bed_id = self._get_bed_id(patrol_id, i)
+
             if is_person:
-                # 床位ID映射:这里简化为检测顺序,实际应根据位置映射
-                bed_id = i + 1  # 从1开始编号，不超过最大床位数
-                if bed_id <= self.max_beds:
-                    occupied_beds.append(bed_id)
+                occupied_beds.append(bed_id)
 
-                    # 紧急程度:根据CLIP置信度设置
-                    urgency = 1 if person_score > 0.7 else 0
-                    urgencies.append(urgency)
+                # 紧急程度:根据CLIP置信度设置
+                urgency = 1 if person_score > 0.7 else 0
+                urgencies.append(urgency)
 
-                    self.get_logger().info(
-                        f'床位 {bed_id} 有人, CLIP置信度: {person_score:.3f}, '
-                        f'YOLO置信度: {confidence:.3f}'
-                    )
-                else:
-                    self.get_logger().warn(f'床位ID {bed_id} 超过最大限制 {self.max_beds}')
+                self.get_logger().info(
+                    f'床位 {bed_id} 有人, CLIP置信度: {person_score:.3f}, '
+                    f'YOLO置信度: {confidence:.3f}'
+                )
 
         response.is_anomaly = len(occupied_beds) > 0
         response.details = f"Detected {len(occupied_beds)} occupied beds out of {len(bed_detections)} total beds"
@@ -375,7 +435,7 @@ class BedDetectionNode(Node):
         检测指定床位是否有人(异常),返回is_anomaly
         
         Args:
-            request.area_bed_id: 目标床位ID (1-based)
+            request.area_bed_id: 目标床位ID (来自映射表)
         """
         self._switch_camera_mode('bed')
         target_bed_id = request.area_bed_id
@@ -392,22 +452,24 @@ class BedDetectionNode(Node):
             response.urgencies = []
             return response
 
-        self.get_logger().info(f'检测到 {len(bed_detections)} 个床位')
+        num_detected = len(bed_detections)
+        self.get_logger().info(f'检测到 {num_detected} 个床位')
 
-        # 检查目标床位ID是否在检测范围内
-        # 床位ID映射: 按检测顺序从1开始编号
-        if target_bed_id < 1 or target_bed_id > len(bed_detections):
+        # 通过映射表将床位ID反查为检测索引
+        det_idx = self._get_detection_index_for_bed(target_bed_id)
+
+        if det_idx < 0 or det_idx >= num_detected:
             self.get_logger().warn(
-                f'目标床位ID {target_bed_id} 不在检测范围内 (1-{len(bed_detections)})'
+                f'目标床位ID {target_bed_id} 对应检测索引 {det_idx} 超出范围 (0-{num_detected - 1})'
             )
             response.is_anomaly = False
-            response.details = f"Bed ID {target_bed_id} out of range (1-{len(bed_detections)})"
+            response.details = f"Bed ID {target_bed_id} (index {det_idx}) out of range"
             response.bed_ids = []
             response.urgencies = []
             return response
 
-        # 获取目标床位的检测结果 (索引从0开始,床位ID从1开始)
-        detection = bed_detections[target_bed_id - 1]
+        # 获取目标床位的检测结果
+        detection = bed_detections[det_idx]
         bbox = detection['bbox']
         yolo_confidence = detection['confidence']
 

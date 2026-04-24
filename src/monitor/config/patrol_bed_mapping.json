@@ -1,0 +1,27 @@
+{
+  "_comment": "巡诊点-床位映射: detection_index 为 YOLO 检测框序号(从0开始), bed_id 为对应导航床位编号。调试时按实际情况调整 bed_id 即可。",
+  "patrol_points": [
+    {
+      "patrol_id": 1,
+      "beds": [
+        {"detection_index": 0, "bed_id": 1},
+        {"detection_index": 1, "bed_id": 2},
+        {"detection_index": 2, "bed_id": 3},
+        {"detection_index": 3, "bed_id": 4},
+        {"detection_index": 4, "bed_id": 5},
+        {"detection_index": 5, "bed_id": 6}
+      ]
+    },
+    {
+      "patrol_id": 2,
+      "beds": [
+        {"detection_index": 0, "bed_id": 7},
+        {"detection_index": 1, "bed_id": 8},
+        {"detection_index": 2, "bed_id": 9},
+        {"detection_index": 3, "bed_id": 10},
+        {"detection_index": 4, "bed_id": 11},
+        {"detection_index": 5, "bed_id": 12}
+      ]
+    }
+  ]
+}
