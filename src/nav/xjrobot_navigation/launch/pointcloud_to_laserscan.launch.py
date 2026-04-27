@@ -29,7 +29,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "min_height",
-                default_value="0.05",
+                default_value="-0.1",
                 description="Minimum point height kept during 3D to 2D projection",
             ),
             DeclareLaunchArgument(
@@ -59,7 +59,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "range_min",
-                default_value="0.1",
+                default_value="0.2",
                 description="Minimum valid range in meters",
             ),
             DeclareLaunchArgument(

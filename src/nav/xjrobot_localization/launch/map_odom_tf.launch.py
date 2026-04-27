@@ -25,7 +25,7 @@ def generate_launch_description():
         [
             DeclareLaunchArgument(
                 "use_sim_time",
-                default_value="true",
+                default_value="false",
                 description="仿真环境请设为 true，实机请设为 false",
             ),
             DeclareLaunchArgument(

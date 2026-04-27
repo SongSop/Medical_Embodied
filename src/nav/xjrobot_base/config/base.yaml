@@ -27,11 +27,13 @@
     odom_frame: odom
     base_frame: base_footprint
     publish_odom_tf: false
-    # 轮速计只作为短时局部运动先验：
-    # 不打滑时其线速度/角速度较准，因此给 vx / wz 相对较小协方差；
-    # 但仍保留足够不确定性，给 FastLIO 在中低频上纠偏留出话语权。
+    # 轮速计作为平面运动学约束：
+    # - 不信轮式积分位姿，pose 全部给大协方差；
+    # - vx 是短时前向速度观测，给较小协方差；
+    # - vy=0 是差速/非全向底盘的重要非完整约束，给较小但不为零的协方差；
+    # - wz 由左右轮差分得到，可抑制 IMU yaw rate 漂移，但受轮距/打滑影响，权重略低于 vx/vy。
     wheel_odom_pose_covariance_diagonal: [1000000.0, 1000000.0, 1000000.0, 1000000.0, 1000000.0, 1000000.0]
-    wheel_odom_twist_covariance_diagonal: [0.03, 1000.0, 1000000.0, 1000000.0, 1000000.0, 0.06]
+    wheel_odom_twist_covariance_diagonal: [0.03, 0.02, 1000000.0, 1000000.0, 1000000.0, 0.08]
     # MID360 安装角补偿统一在中间节点完成：
     # 驱动保持原始 livox_frame/raw topic，节点同时旋转点云和 IMU，
     # 再输出到符合整车约定的 lidar_3d_link / imu_link。
@@ -46,3 +48,10 @@
     mount_roll_deg: 25.0
     mount_pitch_deg: 0.0
     mount_yaw_deg: 90.0
+    # IMU 角速度单位必须为 rad/s。静止采样取平均后，把残余 bias 填到这里。
+    # 例如静止时 /livox/imu_rotated.angular_velocity.z = 0.018，则设置第三项为 0.018。
+    imu_angular_velocity_bias: [0.0, 0.0, -0.024]
+    # 给 IMU covariance 设置下限，避免驱动发布 0 协方差时 EKF 过度相信 IMU。
+    # z 轴角速度当前观察到静态偏置，默认给更保守的方差。
+    imu_angular_velocity_covariance_floor: [0.02, 0.02, 0.08]
+    imu_linear_acceleration_covariance_floor: [0.5, 0.5, 0.5]

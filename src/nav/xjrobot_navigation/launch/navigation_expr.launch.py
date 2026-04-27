@@ -22,9 +22,9 @@ def generate_launch_description():
     )
 
     # map->odom 发布器（由 FastLIO 链路推导）
-    map_odom_tf_launch_path = PathJoinSubstitution(
-        [FindPackageShare("xjrobot_localization"), "launch", "map_odom_tf.launch.py"]
-    )
+    # map_odom_tf_launch_path = PathJoinSubstitution(
+    #     [FindPackageShare("xjrobot_localization"), "launch", "map_odom_tf.launch.py"]
+    # )
 
     # RViz 配置（延用现有 xjrobot_navigation 配置）
     rviz_config_path = PathJoinSubstitution(
@@ -79,10 +79,10 @@ def generate_launch_description():
             DeclareLaunchArgument(name="initial_pose_y", default_value="0.0"),
             DeclareLaunchArgument(name="initial_pose_yaw", default_value="0.0"),
             # 启动 FastLIO 对齐后的 map->odom 发布
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(map_odom_tf_launch_path),
-                launch_arguments={"use_sim_time": LaunchConfiguration("sim")}.items(),
-            ),
+            # IncludeLaunchDescription(
+            #     PythonLaunchDescriptionSource(map_odom_tf_launch_path),
+            #     launch_arguments={"use_sim_time": LaunchConfiguration("sim")}.items(),
+            # ),
             # 这里单独放在导航 launch 中，而不是耦合进底盘 bringup：
             # 这样导航是否使用 2D scan 化处理，可以作为导航侧策略独立切换。
             IncludeLaunchDescription(

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "livox_ros_driver2/msg/custom_msg.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -35,6 +36,12 @@ public:
     mount_roll_deg_ = declare_parameter<double>("mount_roll_deg", 25.0);
     mount_pitch_deg_ = declare_parameter<double>("mount_pitch_deg", 0.0);
     mount_yaw_deg_ = declare_parameter<double>("mount_yaw_deg", 90.0);
+    imu_angular_velocity_bias_ = loadVector3Parameter(
+      "imu_angular_velocity_bias", {0.0, 0.0, 0.0});
+    imu_angular_velocity_covariance_floor_ = loadVector3Parameter(
+      "imu_angular_velocity_covariance_floor", {0.02, 0.02, 0.08});
+    imu_linear_acceleration_covariance_floor_ = loadVector3Parameter(
+      "imu_linear_acceleration_covariance_floor", {0.5, 0.5, 0.5});
 
     updateRotationMatrix();
 
@@ -57,14 +64,32 @@ public:
     RCLCPP_INFO(
       get_logger(),
       "MID360 rotation enabled: raw_lidar=%s -> %s (%s) and %s (%s), raw_imu=%s -> %s (%s), "
-      "rpy_deg=(%.3f, %.3f, %.3f)",
+      "rpy_deg=(%.3f, %.3f, %.3f), imu_gyro_bias=(%.6f, %.6f, %.6f)",
       raw_lidar_topic_.c_str(), rotated_lidar_topic_.c_str(), fastlio_lidar_frame_id_.c_str(),
       rotated_lidar_points_topic_.c_str(), nav_lidar_frame_id_.c_str(),
       raw_imu_topic_.c_str(), rotated_imu_topic_.c_str(), rotated_imu_frame_id_.c_str(),
-      mount_roll_deg_, mount_pitch_deg_, mount_yaw_deg_);
+      mount_roll_deg_, mount_pitch_deg_, mount_yaw_deg_,
+      imu_angular_velocity_bias_[0], imu_angular_velocity_bias_[1],
+      imu_angular_velocity_bias_[2]);
   }
 
 private:
+  std::array<double, 3> loadVector3Parameter(
+    const std::string & name,
+    const std::array<double, 3> & defaults)
+  {
+    const auto values = declare_parameter<std::vector<double>>(
+      name, std::vector<double>(defaults.begin(), defaults.end()));
+    if (values.size() != 3U) {
+      RCLCPP_WARN(
+        get_logger(), "%s expects 3 values, got %zu. Falling back to defaults.",
+        name.c_str(), values.size());
+      return defaults;
+    }
+
+    return {values[0], values[1], values[2]};
+  }
+
   static double degToRad(double degrees)
   {
     return degrees * M_PI / 180.0;
@@ -121,6 +146,25 @@ private:
           value += temp[row * 3 + k] * rotation_[col * 3 + k];
         }
         result[row * 3 + col] = value;
+      }
+    }
+
+    return result;
+  }
+
+  std::array<double, 9> applyCovarianceFloor(
+    const std::array<double, 9> & covariance,
+    const std::array<double, 3> & diagonal_floor) const
+  {
+    auto result = covariance;
+    if (result[0] < 0.0) {
+      result.fill(0.0);
+    }
+
+    for (size_t i = 0; i < 3; ++i) {
+      const size_t index = i * 3 + i;
+      if (result[index] <= 0.0 || result[index] < diagonal_floor[i]) {
+        result[index] = diagonal_floor[i];
       }
     }
 
@@ -189,9 +233,9 @@ private:
       rotated_msg.angular_velocity.x,
       rotated_msg.angular_velocity.y,
       rotated_msg.angular_velocity.z);
-    rotated_msg.angular_velocity.x = rotated_angular_velocity[0];
-    rotated_msg.angular_velocity.y = rotated_angular_velocity[1];
-    rotated_msg.angular_velocity.z = rotated_angular_velocity[2];
+    rotated_msg.angular_velocity.x = rotated_angular_velocity[0] - imu_angular_velocity_bias_[0];
+    rotated_msg.angular_velocity.y = rotated_angular_velocity[1] - imu_angular_velocity_bias_[1];
+    rotated_msg.angular_velocity.z = rotated_angular_velocity[2] - imu_angular_velocity_bias_[2];
 
     const auto rotated_linear_acceleration = rotateVector(
       rotated_msg.linear_acceleration.x,
@@ -201,10 +245,12 @@ private:
     rotated_msg.linear_acceleration.y = rotated_linear_acceleration[1];
     rotated_msg.linear_acceleration.z = rotated_linear_acceleration[2];
 
-    rotated_msg.angular_velocity_covariance = rotateCovariance(
-      rotated_msg.angular_velocity_covariance);
-    rotated_msg.linear_acceleration_covariance = rotateCovariance(
-      rotated_msg.linear_acceleration_covariance);
+    rotated_msg.angular_velocity_covariance = applyCovarianceFloor(
+      rotateCovariance(rotated_msg.angular_velocity_covariance),
+      imu_angular_velocity_covariance_floor_);
+    rotated_msg.linear_acceleration_covariance = applyCovarianceFloor(
+      rotateCovariance(rotated_msg.linear_acceleration_covariance),
+      imu_linear_acceleration_covariance_floor_);
 
     rotated_imu_pub_->publish(rotated_msg);
   }
@@ -227,6 +273,9 @@ private:
   double mount_roll_deg_{0.0};
   double mount_pitch_deg_{0.0};
   double mount_yaw_deg_{0.0};
+  std::array<double, 3> imu_angular_velocity_bias_{};
+  std::array<double, 3> imu_angular_velocity_covariance_floor_{};
+  std::array<double, 3> imu_linear_acceleration_covariance_floor_{};
   std::array<double, 9> rotation_{};
 };
 

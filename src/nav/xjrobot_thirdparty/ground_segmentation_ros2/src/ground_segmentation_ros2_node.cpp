@@ -280,9 +280,9 @@ private:
         obstacle_points->header.frame_id = output_frame_id;
         raw_points->header.frame_id = output_frame_id;
 
-        ground_points->header.stamp = this->now();
-        obstacle_points->header.stamp = this->now();
-        raw_points->header.stamp = this->now();
+        ground_points->header.stamp = pointcloud_msg->header.stamp;
+        obstacle_points->header.stamp = pointcloud_msg->header.stamp;
+        raw_points->header.stamp = pointcloud_msg->header.stamp;
 
         // Publish the message
         publisher_ground_points->publish(*ground_points);

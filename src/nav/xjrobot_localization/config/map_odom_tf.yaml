@@ -18,4 +18,4 @@ map_odom_tf_publisher:
     # 时间戳策略：
     # now    -> 使用当前节点时钟（推荐）
     # source -> 使用 map_fastlio->lidar 的源时间戳
-    stamp_mode: "now"
+    stamp_mode: "source"

@@ -37,19 +37,19 @@ ground_segmentation:
     minZ: -100.0
     downsample: false
     downsample_resolution: 0.1
-    lidar_to_ground: -0.145
+    lidar_to_ground: -0.1
     transform_tolerance: 0.1
 
     ##ground detection
-    cellSizeX: 1.0
-    cellSizeY: 1.0
+    cellSizeX: 0.5
+    cellSizeY: 0.5
     cellSizeZ: 10.0
-    cellSizeZPhase2: 1.0
+    cellSizeZPhase2: 0.3
     slopeThresholdDegrees: 20.0
-    groundInlierThreshold: 0.2
+    groundInlierThreshold: 0.08
     centroidSearchRadius: 5.0
     use_imu_orientation: false
-    maxGroundHeightDeviation: 0.1
+    maxGroundHeightDeviation: 0.05
 
     #debug
     show_benchmark: true

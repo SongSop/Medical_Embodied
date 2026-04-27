@@ -104,6 +104,7 @@ local_costmap:
     ros__parameters:
       update_frequency: 10.0             # 更新频率，Hz
       publish_frequency: 10.0            # 发布频率，Hz
+      transform_tolerance: 0.3           # 放宽 TF 容忍度，降低实机链路抖动导致的丢观测
       global_frame: odom                 # 局部图挂在 odom 下，避免 map 抖动影响控制
       robot_base_frame: base_footprint
       rolling_window: true
@@ -116,7 +117,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 5.0         # 膨胀代价衰减速度
-        inflation_radius: 0.30           # 障碍膨胀半径，m
+        inflation_radius: 0.80           # 障碍膨胀半径，m
       obstacle_layer:
         # 本地障碍物输入统一来自 /scan
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -143,30 +144,33 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
-      update_frequency: 3.0              # 全局图更新频率通常低于局部图
-      publish_frequency: 3.0
+      update_frequency: 5.0              # 全局图更新频率通常低于局部图
+      publish_frequency: 5.0
+      transform_tolerance: 0.3           # 全局图更依赖 map->odom，放宽容忍度避免静态化
       global_frame: map
       robot_base_frame: base_footprint
       robot_radius: 0.25
       resolution: 0.05
       track_unknown_space: true          # 保留未知区域
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      plugins: ["obstacle_layer", "inflation_layer"]
+      rolling_window: true
+      width: 20.0                         
+      height: 20.0 
       obstacle_layer:
         # 全局图同样使用 /scan 作为实时障碍输入
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
         footprint_clearing_enabled: True
         observation_sources: scan
-        min_obstacle_height: -1.0
-        max_obstacle_height: 2.0
         scan:
           topic: /scan
           data_type: "LaserScan"
-          min_obstacle_height: -1.0
+          min_obstacle_height: 0.0
           max_obstacle_height: 2.0
           observation_persistence: 0.0
+          tf_filter_tolerance: 0.3
           marking: True
-          clearing: True
+          clearing: False
           obstacle_max_range: 3.5
           obstacle_min_range: 0.1
           raytrace_max_range: 4.0
@@ -177,8 +181,8 @@ global_costmap:
         map_subscribe_transient_local: True  # 兼容 map_server 的 transient_local QoS
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 5.0         # 膨胀代价衰减速度
-        inflation_radius: 0.30           # 障碍膨胀半径，m
+        cost_scaling_factor: 5.0
+        inflation_radius: 0.8
       always_send_full_costmap: True
 
 # 地图保存器：运行时保存地图
