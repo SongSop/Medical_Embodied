@@ -36,7 +36,7 @@ def generate_launch_description():
 
     # Nav2 参数总配置
     nav2_config_path = PathJoinSubstitution(
-        [FindPackageShare("xjrobot_navigation"), "config", "navigation_expr.yaml"]
+        [FindPackageShare("xjrobot_navigation"), "config", "RPP.yaml"]
     )
 
     # 仅启动 map_server（不启动 AMCL），地图由 3D 定位 + map->odom 维护
