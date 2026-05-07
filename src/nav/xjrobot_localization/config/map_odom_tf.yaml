@@ -12,10 +12,10 @@ map_odom_tf_publisher:
     # 注意：当前算法不要求 fastlio_lidar_frame 与 global_lidar_frame 之间有显式 TF
     global_lidar_frame: "lidar_3d_link"
     # 发布频率（Hz）
-    publish_rate: 30.0
+    publish_rate: 100.0
     # TF 查询超时时间（秒）
     tf_lookup_timeout_sec: 0.05
     # 时间戳策略：
     # now    -> 使用当前节点时钟（推荐）
     # source -> 使用 map_fastlio->lidar 的源时间戳
-    stamp_mode: "source"
+    stamp_mode: "now"

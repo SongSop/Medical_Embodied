@@ -52,9 +52,10 @@ void checkSubscriptionConnection(
 class GroundSegmentatioNode : public rclcpp::Node {
 public:
     GroundSegmentatioNode(rclcpp::NodeOptions options) : Node("ground_segmentation",options) {
-        publisher_ground_points = this->create_publisher<sensor_msgs::msg::PointCloud2>("/ground_segmentation/ground_points", 10);
-        publisher_obstacle_points = this->create_publisher<sensor_msgs::msg::PointCloud2>("/ground_segmentation/obstacle_points", 10);
-        publisher_raw_points = this->create_publisher<sensor_msgs::msg::PointCloud2>("/ground_segmentation/raw_points", 10);
+        auto sensor_qos = rclcpp::SensorDataQoS().keep_last(1);
+        publisher_ground_points = this->create_publisher<sensor_msgs::msg::PointCloud2>("/ground_segmentation/ground_points", sensor_qos);
+        publisher_obstacle_points = this->create_publisher<sensor_msgs::msg::PointCloud2>("/ground_segmentation/obstacle_points", sensor_qos);
+        publisher_raw_points = this->create_publisher<sensor_msgs::msg::PointCloud2>("/ground_segmentation/raw_points", sensor_qos);
 
         if (this->get_parameter("use_imu_orientation").as_bool()){
             subscriber_synced_pointcloud = std::make_shared<message_filters::Subscriber<sensor_msgs::msg::PointCloud2>>(this, "/ground_segmentation/input_pointcloud");
@@ -66,12 +67,12 @@ public:
             checkSubscriptionConnection(imu_sub_ptr, "IMU", this->get_logger());
             checkSubscriptionConnection(pc_sub_ptr, "Pointcloud2", this->get_logger());
  
-            sync = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(SyncPolicy(50), *subscriber_synced_pointcloud, *subscriber_synced_imu);
+            sync = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(SyncPolicy(5), *subscriber_synced_pointcloud, *subscriber_synced_imu);
             sync->registerCallback(std::bind(&GroundSegmentatioNode::syncedCallback, this, std::placeholders::_1, std::placeholders::_2));
         }
         else {
             subscriber_pointcloud = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-                "/ground_segmentation/input_pointcloud", 10, std::bind(&GroundSegmentatioNode::callback, this, std::placeholders::_1));
+                "/ground_segmentation/input_pointcloud", sensor_qos, std::bind(&GroundSegmentatioNode::callback, this, std::placeholders::_1));
             checkSubscriptionConnection(subscriber_pointcloud, "Pointcloud2", this->get_logger());
         }
 

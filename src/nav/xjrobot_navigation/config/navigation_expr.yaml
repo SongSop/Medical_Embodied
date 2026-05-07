@@ -64,39 +64,41 @@ controller_server:
 
     FollowPath:
       # 采用 RotationShim + RPP 组合控制器
-      plugin: "nav2_rotation_shim_controller::RotationShimController"
-      primary_controller: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      plugin: "nav2_rotation_shim_controller::RotationShimController"  # 外层控制器：路径起步前先做朝向对齐
+      primary_controller: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"  # 内层控制器：RPP 路径跟踪
       angular_dist_threshold: 0.785      # 偏航过大时先原地转向
-      angular_disengage_threshold: 0.3925
-      forward_sampling_distance: 0.5
-      rotate_to_heading_angular_vel: 0.8
-      max_angular_accel: 1.5
-      simulate_ahead_time: 1.0
-      rotate_to_goal_heading: false
-      rotate_to_heading_once: true
-      use_path_orientations: false
-      desired_linear_vel: 0.2            # 巡航线速度，m/s
-      lookahead_dist: 0.6                # 前视距离，m
-      min_lookahead_dist: 0.3
-      max_lookahead_dist: 0.9
-      lookahead_time: 1.5
+      angular_disengage_threshold: 0.3925 # 朝向误差小于该值后切回 RPP 跟踪
+      forward_sampling_distance: 0.5     # 沿路径向前采样用于估计目标朝向的距离，m
+      rotate_to_heading_angular_vel: 0.5 # 原地对齐路径朝向时的角速度，rad/s
+      max_angular_accel: 1.0             # 原地对齐时允许的最大角加速度，rad/s^2
+      simulate_ahead_time: 1.0           # 旋转前向碰撞仿真时间，s
+      rotate_to_goal_heading: true       # 到达目标位置后是否再对齐目标朝向
+      rotate_to_heading_once: true       # 每个新目标只在起步时执行一次朝向对齐
+      use_path_orientations: false       # 是否使用路径点自带朝向作为对齐参考
+      desired_linear_vel: 0.4            # 巡航线速度，m/s
+      lookahead_dist: 1.5                # 前视距离，m
+      min_lookahead_dist: 0.7            # 速度缩放前视距离的最小值，m
+      max_lookahead_dist: 2.0            # 速度缩放前视距离的最大值，m
+      lookahead_time: 1.5                # 按速度计算前视距离时的时间系数，s
       transform_tolerance: 0.1           # TF 容忍延迟，s
-      use_velocity_scaled_lookahead_dist: false
-      min_approach_linear_velocity: 0.05
-      approach_velocity_scaling_dist: 0.6
+      use_velocity_scaled_lookahead_dist: false # 是否按当前速度动态调整前视距离
+      min_approach_linear_velocity: 0.05 # 接近目标时允许的最小线速度，m/s
+      approach_velocity_scaling_dist: 0.6 # 距目标多远开始按距离降速，m
       use_collision_detection: true      # 控制器内部碰撞检查
-      max_allowed_time_to_collision_up_to_carrot: 1.0
-      use_regulated_linear_velocity_scaling: true
-      use_cost_regulated_linear_velocity_scaling: true
-      regulated_linear_scaling_min_radius: 0.9
-      regulated_linear_scaling_min_speed: 0.25
-      use_fixed_curvature_lookahead: false
-      curvature_lookahead_dist: 0.6
-      use_rotate_to_heading: true
+      max_allowed_time_to_collision_up_to_carrot: 1.0 # 碰撞检测向前预测的最长时间，s
+      use_regulated_linear_velocity_scaling: true # 是否根据路径曲率自动降速
+      use_cost_regulated_linear_velocity_scaling: true # 是否根据障碍物代价自动降速
+      cost_scaling_dist: 0.25
+      cost_scaling_gain: 0.7
+      regulated_linear_scaling_min_radius: 0.9 # 小于该转弯半径时触发曲率降速，m
+      regulated_linear_scaling_min_speed: 0.08 # 曲率/代价降速后的最低线速度，m/s
+      use_fixed_curvature_lookahead: false # 是否使用固定前视距离计算曲率
+      curvature_lookahead_dist: 0.6       # 曲率计算使用的前视距离，m
+      use_rotate_to_heading: false         # RPP 内部是否允许原地转向对齐路径
       allow_reversing: false             # 当前不允许倒车
-      rotate_to_heading_min_angle: 0.785
-      max_robot_pose_search_dist: 10.0
-      stateful: true
+      rotate_to_heading_min_angle: 0.785 # RPP 触发原地转向的最小角度差，rad
+      max_robot_pose_search_dist: 10.0   # 在路径上搜索机器人最近点的最大距离，m
+      stateful: true                     # 到达 XY 容差后保持目标状态，减少末端振荡
 
 # 局部代价地图：滚动窗口，服务于局部避障与控制
 local_costmap:
@@ -115,8 +117,8 @@ local_costmap:
       plugins: ["obstacle_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 5.0         # 膨胀代价衰减速度
-        inflation_radius: 0.30           # 障碍膨胀半径，m
+        cost_scaling_factor: 8.0         # 膨胀代价衰减速度
+        inflation_radius: 0.28           # 障碍膨胀半径，m
       obstacle_layer:
         # 本地障碍物输入统一来自 /scan
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -177,7 +179,7 @@ global_costmap:
         map_subscribe_transient_local: True  # 兼容 map_server 的 transient_local QoS
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 5.0         # 膨胀代价衰减速度
+        cost_scaling_factor: 6.0         # 膨胀代价衰减速度
         inflation_radius: 0.30           # 障碍膨胀半径，m
       always_send_full_costmap: True
 
@@ -192,14 +194,14 @@ map_saver:
 # 全局规划器：依据全局代价地图求路径
 planner_server:
   ros__parameters:
-    expected_planner_frequency: 20.0     # 期望规划频率，Hz
-    planner_plugins: ["GridBased"]
-    costmap_update_timeout: 1.0
+    expected_planner_frequency: 20.0     # 期望规划频率，Hz，用于诊断规划器是否过慢
+    planner_plugins: ["GridBased"]       # 注册的全局规划器插件名列表
+    costmap_update_timeout: 1.0          # 规划前等待 global_costmap 更新的超时时间，s
     GridBased:
-      plugin: "nav2_navfn_planner::NavfnPlanner"
-      tolerance: 0.5                     # 目标点附近允许落到最近可达点的距离
+      plugin: "nav2_navfn_planner::NavfnPlanner"  # 使用 NavFn 栅格全局规划器
+      tolerance: 0.5                     # 目标点附近允许落到最近可达点的距离，m
       use_astar: false                   # false 为 Dijkstra，true 为 A*
-      allow_unknown: false               # 是否允许穿越未知区域
+      allow_unknown: false               # 是否允许路径穿越未知区域
 
 # 平滑器：对规划路径做轻量平滑
 smoother_server:
@@ -259,8 +261,8 @@ velocity_smoother:
     feedback: "OPEN_LOOP"                # 开环速度平滑
     max_velocity: [0.3, 0.0, 1.0]        # 最大速度 [vx, vy, wz]
     min_velocity: [-0.2, 0.0, -1.0]      # 最小速度 [vx, vy, wz]
-    max_accel: [0.8, 0.0, 1.5]           # 最大加速度
-    max_decel: [-0.8, 0.0, -1.5]         # 最大减速度
+    max_accel: [0.5, 0.0, 1.2]           # 最大加速度
+    max_decel: [-0.8, 0.0, -1.8]         # 最大减速度
     odom_topic: odom
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]   # 死区速度
@@ -283,9 +285,9 @@ collision_monitor:
       type: "polygon"
       action_type: "approach"
       footprint_topic: "/local_costmap/published_footprint"
-      time_before_collision: 1.2
-      simulation_time_step: 0.1
-      min_points: 6
+      time_before_collision: 0.8
+      simulation_time_step: 0.05
+      min_points: 8
       visualize: False
       enabled: True
     observation_sources: ["obstacle_points"]

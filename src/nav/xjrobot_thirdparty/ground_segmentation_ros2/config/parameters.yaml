@@ -29,13 +29,14 @@ ground_segmentation:
     # pre/post processing
     robot_frame: "lidar_3d_link"
     output_frame_id: "lidar_3d_link"
-    maxX:  100.0
-    minX: -100.0
-    maxY:  100.0
-    minY: -100.0
-    maxZ:  100.0
-    minZ: -100.0
-    downsample: false
+    # Nav2 only consumes /scan out to 4 m, so avoid segmenting the full MID360 cloud.
+    maxX:  6.0
+    minX: -6.0
+    maxY:  6.0
+    minY: -6.0
+    maxZ:  2.0
+    minZ: -0.5
+    downsample: true
     downsample_resolution: 0.1
     lidar_to_ground: -0.1
     transform_tolerance: 0.1
@@ -52,4 +53,4 @@ ground_segmentation:
     maxGroundHeightDeviation: 0.05
 
     #debug
-    show_benchmark: true
+    show_benchmark: false

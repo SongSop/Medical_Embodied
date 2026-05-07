@@ -69,7 +69,7 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "queue_size",
-                default_value="30",
+                default_value="1",
                 description="Input queue size for pointcloud messages",
             ),
             Node(

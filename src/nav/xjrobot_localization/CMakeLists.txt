@@ -105,6 +105,7 @@ install(
   PROGRAMS
     scripts/fastlio_localization/global_localization.py
     scripts/manual_initial_pose_publisher.py
+    scripts/nav_latency_probe.py
     scripts/fastlio_localization/transform_fusion.py
   DESTINATION lib/${PROJECT_NAME}
 )

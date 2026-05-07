@@ -8,7 +8,7 @@ from launch_ros.substitutions import FindPackageShare
 
 
 # 默认加载地图名（对应 xjrobot_localization/maps/<MAP_NAME>.yaml）
-MAP_NAME = "scans"
+DEFAULT_MAP_PATH = "/home/medical/maps/0423.yaml"
 
 
 def generate_launch_description():
@@ -16,28 +16,27 @@ def generate_launch_description():
     nav2_launch_path = PathJoinSubstitution(
         [FindPackageShare("nav2_bringup"), "launch", "bringup_launch.py"]
     )
+    # 将地面分割后的 3D 障碍点云先压成 2D LaserScan，再交给 Nav2 的 costmap
     pointcloud_to_scan_launch_path = PathJoinSubstitution(
         [FindPackageShare("xjrobot_navigation"), "launch", "pointcloud_to_laserscan.launch.py"]
     )
 
     # map->odom 发布器（由 FastLIO 链路推导）
-    map_odom_tf_launch_path = PathJoinSubstitution(
-        [FindPackageShare("xjrobot_localization"), "launch", "map_odom_tf.launch.py"]
-    )
+    # map_odom_tf_launch_path = PathJoinSubstitution(
+    #     [FindPackageShare("xjrobot_localization"), "launch", "map_odom_tf.launch.py"]
+    # )
 
     # RViz 配置（延用现有 xjrobot_navigation 配置）
     rviz_config_path = PathJoinSubstitution(
         [FindPackageShare("xjrobot_navigation"), "rviz", "xjrobot_navigation.rviz"]
     )
 
-    # 地图迁移到 xjrobot_localization 包
-    default_map_path = PathJoinSubstitution(
-        [FindPackageShare("xjrobot_localization"), "maps", f"{MAP_NAME}.yaml"]
-    )
+    # 默认地图改为显式绝对路径，便于实机直接指定源地图文件
+    default_map_path = DEFAULT_MAP_PATH
 
     # Nav2 参数总配置
     nav2_config_path = PathJoinSubstitution(
-        [FindPackageShare("xjrobot_navigation"), "config", "navigation_fastlio.yaml"]
+        [FindPackageShare("xjrobot_navigation"), "config", "navigation_mppi.yaml"]
     )
 
     # 仅启动 map_server（不启动 AMCL），地图由 3D 定位 + map->odom 维护
@@ -47,7 +46,6 @@ def generate_launch_description():
         name="map_server",
         output="screen",
         parameters=[
-            nav2_config_path,
             {
                 "yaml_filename": LaunchConfiguration("map"),
                 "use_sim_time": LaunchConfiguration("sim"),
@@ -70,7 +68,7 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument(
-                name="sim", default_value="true", description="是否启用仿真时间（use_sim_time）"
+                name="sim", default_value="false", description="是否启用仿真时间（use_sim_time）"
             ),
             DeclareLaunchArgument(name="rviz", default_value="true", description="是否启动 RViz2"),
             DeclareLaunchArgument(
@@ -81,10 +79,12 @@ def generate_launch_description():
             DeclareLaunchArgument(name="initial_pose_y", default_value="0.0"),
             DeclareLaunchArgument(name="initial_pose_yaw", default_value="0.0"),
             # 启动 FastLIO 对齐后的 map->odom 发布
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(map_odom_tf_launch_path),
-                launch_arguments={"use_sim_time": LaunchConfiguration("sim")}.items(),
-            ),
+            # IncludeLaunchDescription(
+            #     PythonLaunchDescriptionSource(map_odom_tf_launch_path),
+            #     launch_arguments={"use_sim_time": LaunchConfiguration("sim")}.items(),
+            # ),
+            # 这里单独放在导航 launch 中，而不是耦合进底盘 bringup：
+            # 这样导航是否使用 2D scan 化处理，可以作为导航侧策略独立切换。
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(pointcloud_to_scan_launch_path),
                 launch_arguments={
