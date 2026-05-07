@@ -114,6 +114,17 @@ private:
     const double left_rocker =
       reverse_drive_direction_ ? -left_rocker_raw : left_rocker_raw;
     const double right_rocker = read_axis(joy, default_layout ? 3 : 3);
+    const bool joystick_spike =
+      (std::abs(last_left_rocker_) < 0.10 && std::abs(left_rocker) > 0.90) ||
+      (std::abs(last_right_rocker_) < 0.10 && std::abs(right_rocker) > 0.90);
+    last_left_rocker_ = left_rocker;
+    last_right_rocker_ = right_rocker;
+    if (joystick_spike) {
+      car_state_ = CarState::Pause;
+      manual_left_rpm_ = 0;
+      manual_right_rpm_ = 0;
+      return;
+    }
     const int a_button = read_button(joy, 0);
     const int b_button = read_button(joy, 1);
     const int x_button = read_button(joy, default_layout ? 2 : 2);
@@ -252,6 +263,8 @@ private:
   int nav_to_right_rpm_{0};
   int manual_left_rpm_{0};
   int manual_right_rpm_{0};
+  double last_left_rocker_{0.0};
+  double last_right_rocker_{0.0};
   ButtonEdgeGuard joy_edge_default_;
   ButtonEdgeGuard joy_edge_backup_;
 };

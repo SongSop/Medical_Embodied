@@ -64,7 +64,7 @@ global_localization:
         localization_threshold: 0.8
         fov: 6.28319
         fov_far: 300
-        pcd_map_topic: "/map"
+        pcd_map_topic: "/pcd_map"
         odom_topic: "/odom_fastlio"
         map_frame: "map_fastlio"
         status_print: true
@@ -91,5 +91,5 @@ fastlio_relative_odom_node:
 map_publisher:
     ros__parameters:
         tf_frame: "map_fastlio"
-        cloud_topic: "/map"
+        cloud_topic: "/pcd_map"
         period_ms_: 500

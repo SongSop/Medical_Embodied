@@ -131,7 +131,7 @@ def launch_setup(context, *args, **kwargs):
                 "file_name": map_file_path,
             },
         ],
-        remappings=[("cloud_pcd", "/map")],
+        remappings=[("cloud_pcd", "/pcd_map")],
     )
 
     rviz_node = Node(
