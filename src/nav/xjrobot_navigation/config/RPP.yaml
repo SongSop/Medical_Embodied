@@ -33,6 +33,12 @@ bt_navigator:
       plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
     navigate_through_poses:
       plugin: "nav2_bt_navigator::NavigateThroughPosesNavigator"
+    # 使用本包自定义恢复行为树：
+    # - 保留清 costmap、重新规划、原地旋转、等待等恢复动作。
+    # - 删除默认 BT 中的 BackUp 节点，恢复时不再主动后退。
+    # - 旋转速度由 behavior_server 的 max/min_rotational_vel 与 rotational_acc_lim 控制。
+    default_nav_to_pose_bt_xml: "$(find-pkg-share xjrobot_navigation)/behavior_trees/navigate_to_pose_no_backup.xml"
+    default_nav_through_poses_bt_xml: "$(find-pkg-share xjrobot_navigation)/behavior_trees/navigate_through_poses_no_backup.xml"
     error_code_names:
       - compute_path_error_code
       - follow_path_error_code
@@ -214,6 +220,9 @@ smoother_server:
       do_refinement: True
 
 # 恢复行为服务器：负责原地转向、后退、等待等恢复动作
+#
+# 当前策略：使用自定义 BT 保留恢复流程，但删除 BackUp 节点，并把原地旋转速度调低。
+# 这里仍保留 backup 插件注册，方便后续手动调试或切回默认 BT；当前自定义 BT 不会调用它。
 behavior_server:
   ros__parameters:
     local_costmap_topic: local_costmap/costmap_raw
@@ -237,9 +246,9 @@ behavior_server:
     robot_base_frame: base_footprint
     transform_tolerance: 0.1
     simulate_ahead_time: 2.0
-    max_rotational_vel: 1.0
-    min_rotational_vel: 0.4
-    rotational_acc_lim: 3.2
+    max_rotational_vel: 0.35             # 恢复原地转最大角速度，rad/s；默认 1.0，实机更温和
+    min_rotational_vel: 0.15             # 恢复原地转最小角速度，rad/s；过低可能转不动
+    rotational_acc_lim: 0.8              # 恢复原地转角加速度限制，rad/s^2；降低突变
 
 # 路点跟随器：用于多目标点导航
 waypoint_follower:
@@ -260,7 +269,7 @@ velocity_smoother:
     scale_velocities: False
     feedback: "OPEN_LOOP"                # 开环速度平滑
     max_velocity: [0.3, 0.0, 1.0]        # 最大速度 [vx, vy, wz]
-    min_velocity: [-0.2, 0.0, -1.0]      # 最小速度 [vx, vy, wz]
+    min_velocity: [0.0, 0.0, -1.0]       # 最小速度 [vx, vy, wz]；vx=0.0 作为额外安全阀，禁止向后输出
     max_accel: [0.5, 0.0, 1.2]           # 最大加速度
     max_decel: [-0.8, 0.0, -1.8]         # 最大减速度
     odom_topic: odom

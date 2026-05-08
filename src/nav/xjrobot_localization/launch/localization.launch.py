@@ -18,6 +18,7 @@ DEFAULT_RVIZ = "true"
 DEFAULT_PUBLISH_PCD_MAP = "true"
 DEFAULT_LAUNCH_MAP_ODOM_TF = "true"
 DEFAULT_PUBLISH_INITIAL_POSE = "true"
+DEFAULT_PCD_MAP = ""
 
 
 def launch_setup(context, *args, **kwargs):
@@ -38,6 +39,10 @@ def launch_setup(context, *args, **kwargs):
     except OSError:
         pass
 
+    pcd_map_arg = LaunchConfiguration("pcd_map").perform(context).strip()
+    if pcd_map_arg:
+        map_file_path = pcd_map_arg
+
     rviz_config = PathJoinSubstitution(
         [FindPackageShare("xjrobot_localization"), "rviz", "fastlio_localization.rviz"]
     )
@@ -57,7 +62,11 @@ def launch_setup(context, *args, **kwargs):
         output="screen",
         parameters=[
             localization_config,
-            {"use_sim_time": LaunchConfiguration("use_sim_time")},
+            {
+                "use_sim_time": LaunchConfiguration("use_sim_time"),
+                # 允许总 bringup 覆盖配置文件中的 laser_mapping.map_file_path
+                "map_file_path": map_file_path,
+            },
         ],
     )
 
@@ -172,6 +181,11 @@ def generate_launch_description():
                 "config_file",
                 default_value=DEFAULT_CONFIG_FILE,
                 description="定位参数文件名，例如 sim.yaml 或 mid360.yaml",
+            ),
+            DeclareLaunchArgument(
+                "pcd_map",
+                default_value=DEFAULT_PCD_MAP,
+                description="3D PCD 地图绝对路径；为空时使用 config_file 中的 laser_mapping.map_file_path",
             ),
             DeclareLaunchArgument(
                 "use_sim_time",

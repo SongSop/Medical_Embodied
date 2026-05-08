@@ -67,9 +67,13 @@ global_localization:
         pcd_map_topic: "/pcd_map"
         odom_topic: "/odom_fastlio"
         map_frame: "map_fastlio"
-        status_print: true
-        status_clear_screen: true
+        # 实机默认关闭周期性定位状态面板，避免终端刷屏。
+        # 定位异常仍由 global_localization.py 以 warning/error 形式输出。
+        status_print: false
+        status_clear_screen: false
         status_print_period: 1.0
+        verbose_log: false               # true 时恢复 ICP 过程详细 info，默认仅保留必要异常日志
+        warning_log_period: 5.0          # 同类定位 warning 最短输出间隔，单位 s
         coarse_correspondence_distance: 15.0
         fine_correspondence_distance: 3.0
 
