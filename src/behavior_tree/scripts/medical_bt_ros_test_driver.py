@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 import threading
 import time
+from typing import Optional
 
 import rclpy
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
+from rclpy.action.server import ServerGoalHandle
 from rclpy.node import Node
 from std_msgs.msg import Bool
 
@@ -24,7 +26,7 @@ DETECT_BED = 1
 
 
 class Metrics:
-    def __init__(self):
+    def __init__(self) -> None:
         self.llm_call_response = 0
         self.llm_abnormal = 0
         self.llm_passive = 0
@@ -35,33 +37,32 @@ class Metrics:
 
 
 class MedicalBtRosTestDriver(Node):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__('medical_bt_ros_test_driver')
         self.metrics = Metrics()
         self.section_marks = {}
         self.lock = threading.Lock()
 
-        self.battery_pub = self.create_publisher(Battery, '/battery', 10)
-        self.fault_pub = self.create_publisher(Fault, '/fault', 10)
-        self.call_signal_pub = self.create_publisher(Bool, '/call_signal', 10)
+        # self.battery_pub = self.create_publisher(Battery, '/battery', 10)
+        # self.fault_pub = self.create_publisher(Fault, '/fault', 10)
+        # self.call_signal_pub = self.create_publisher(Bool, '/call_signal', 10)
         self.patrol_trigger_pub = self.create_publisher(Bool, '/patrol_triggered', 1)
 
-        self.create_service(DetectAnomaly, '/detect_anomaly', self.handle_detect_anomaly)
-        self.create_service(FaceIdentify, '/face_identify', self.handle_face_identify)
+        # self.create_service(DetectAnomaly, '/detect_anomaly', self.handle_detect_anomaly)
+        # self.create_service(FaceIdentify, '/face_identify', self.handle_face_identify)
         self.create_service(SetConfig, '/loadconfig/set_config', self.handle_set_config)
 
-        self.nav_server = ActionServer(
-            self, Navigate, 'navigate',
-            execute_callback=self.handle_navigate,
-            goal_callback=lambda _req: GoalResponse.ACCEPT,
-            cancel_callback=lambda _gh: CancelResponse.ACCEPT,
-        )
+        # self.nav_server = ActionServer(
+        #     self, Navigate, 'navigate',
+        #     execute_callback=self.handle_navigate
+        # )
         self.llm_server = ActionServer(
             self, LLMInteraction, 'llm_interaction',
             execute_callback=self.handle_llm,
             goal_callback=lambda _req: GoalResponse.ACCEPT,
             cancel_callback=lambda _gh: CancelResponse.ACCEPT,
         )
+
         self.call_nurse_server = ActionServer(
             self, CallNurse, 'call_nurse',
             execute_callback=self.handle_call_nurse,
@@ -69,16 +70,16 @@ class MedicalBtRosTestDriver(Node):
             cancel_callback=lambda _gh: CancelResponse.ACCEPT,
         )
 
-        self.declare_parameter('start_delay', 1.0)
-        self.declare_parameter('ticks', 140)
-        self.declare_parameter('tick_hz', 20)
+        self.declare_parameter('start_delay', 2.0)
+        self.declare_parameter('ticks', 20000000)
+        self.declare_parameter('tick_hz', 10)
         self.declare_parameter('patrol_route_id', 'route_a')
         self.declare_parameter('patrol_cycles', 2)
         self.declare_parameter('patrol_points', ['p0', 'p1'])
         self.patrol_triggered = False
         self.publish_patrol_triggered(False)
 
-    def publish_patrol_triggered(self, value, tick=None):
+    def publish_patrol_triggered(self, value: bool, tick: Optional[int] = None) -> None:
         if value == self.patrol_triggered:
             return
         self.patrol_triggered = value
@@ -86,7 +87,11 @@ class MedicalBtRosTestDriver(Node):
         if tick is not None:
             self.get_logger().info(f'[SIM ] tick={tick} patrol_triggered={str(value).lower()}')
 
-    def handle_detect_anomaly(self, request, response):
+    def handle_detect_anomaly(
+        self,
+        request: DetectAnomaly.Request,
+        response: DetectAnomaly.Response,
+    ) -> DetectAnomaly.Response:
         if request.mode == DETECT_AREA:
             response.is_anomaly = False
             response.details = 'scan'
@@ -100,14 +105,22 @@ class MedicalBtRosTestDriver(Node):
         response.urgencies = []
         return response
 
-    def handle_face_identify(self, _request, response):
+    def handle_face_identify(
+        self,
+        _request: FaceIdentify.Request,
+        response: FaceIdentify.Response,
+    ) -> FaceIdentify.Response:
         response.success = True
         response.person_id = 1
         response.confidence = 0.9
         response.message = 'ok'
         return response
 
-    def handle_set_config(self, request, response):
+    def handle_set_config(
+        self,
+        request: SetConfig.Request,
+        response: SetConfig.Response,
+    ) -> SetConfig.Response:
         config_id = (request.config_id or 'default').strip()
         if config_id == 'default':
             route_id, cycles, points = 'route_a', 2, ['p0', 'p1']
@@ -122,7 +135,7 @@ class MedicalBtRosTestDriver(Node):
         response.message = 'ok'
         return response
 
-    def handle_navigate(self, goal_handle):
+    def handle_navigate(self, goal_handle: ServerGoalHandle) -> Navigate.Result:
         goal = goal_handle.request
         with self.lock:
             if goal.nav_type == NAV_STOP:
@@ -132,13 +145,25 @@ class MedicalBtRosTestDriver(Node):
             if goal.nav_type == NAV_GOAL:
                 self.metrics.nav_patrol += 1
         time.sleep(0.05)
+        feedback = Navigate.Feedback()
+        for i in range(10):
+            if goal_handle.is_cancel_requested:
+                goal_handle.canceled()
+                result = Navigate.Result()
+                result.message = 'Goal canceled'
+                print("goal canceled")
+                return result
+            feedback.progress = i / 9.0
+            time.sleep(0.5)
+            print("sending navigate feed back i=", i)
+            goal_handle.publish_feedback(feedback)
         result = Navigate.Result()
         result.status.status = ActionStatus.OK
         result.message = 'ok'
         goal_handle.succeed()
         return result
 
-    def handle_llm(self, goal_handle):
+    def handle_llm(self, goal_handle: ServerGoalHandle) -> LLMInteraction.Result:
         goal = goal_handle.request
         need_call_nurse = (goal.mode == INTERACTION_ALERT)
         with self.lock:
@@ -149,6 +174,13 @@ class MedicalBtRosTestDriver(Node):
             elif goal.mode == INTERACTION_PASSIVE:
                 self.metrics.llm_passive += 1
         time.sleep(0.05)
+        feedback = LLMInteraction.Feedback()
+        for i in range(10):
+            feedback.partial = str(i / 9.0)
+            time.sleep(0.1)
+            print("sending llm feed back i=", i)
+            goal_handle.publish_feedback(feedback)
+
         result = LLMInteraction.Result()
         result.status.status = ActionStatus.OK
         result.summary = 'ok'
@@ -156,38 +188,24 @@ class MedicalBtRosTestDriver(Node):
         goal_handle.succeed()
         return result
 
-    def handle_call_nurse(self, goal_handle):
+    def handle_call_nurse(self, goal_handle: ServerGoalHandle) -> CallNurse.Result:
         with self.lock:
             self.metrics.call_nurse += 1
         time.sleep(0.02)
+        feedback = CallNurse.Feedback()
+        for i in range(10):
+            feedback.progress = str(i / 9.0)
+            time.sleep(0.1)
+            print("sending callnurse feed back i=", i)
+            goal_handle.publish_feedback(feedback)
         result = CallNurse.Result()
         result.status.status = ActionStatus.OK
         result.message = 'ok'
         goal_handle.succeed()
         return result
 
-    def mark_section(self, name):
-        with self.lock:
-            self.section_marks[name] = (
-                self.metrics.llm_call_response,
-                self.metrics.nav_stop,
-                self.metrics.nav_dock,
-                self.metrics.nav_patrol,
-                self.metrics.call_nurse,
-            )
 
-    def delta_section(self, name):
-        with self.lock:
-            start = self.section_marks.get(name, (0, 0, 0, 0, 0))
-            return (
-                self.metrics.llm_call_response - start[0],
-                self.metrics.nav_stop - start[1],
-                self.metrics.nav_dock - start[2],
-                self.metrics.nav_patrol - start[3],
-                self.metrics.call_nurse - start[4],
-            )
-
-    def publish_inputs(self, tick):
+    def publish_inputs(self, tick: int) -> None:
         call_signal = 5 <= tick <= 8 or 95 <= tick <= 110
         battery_soc = 10.0 if 68 <= tick <= 74 else 50.0
         fault_type = ''
@@ -213,7 +231,7 @@ class MedicalBtRosTestDriver(Node):
 
         self.call_signal_pub.publish(Bool(data=call_signal))
 
-    def run(self):
+    def run(self) -> None:
         start_delay = float(self.get_parameter('start_delay').value)
         total_ticks = int(self.get_parameter('ticks').value)
         tick_hz = float(self.get_parameter('tick_hz').value)
@@ -223,21 +241,15 @@ class MedicalBtRosTestDriver(Node):
         time.sleep(start_delay)
 
         for tick in range(total_ticks):
-            self.publish_inputs(tick)
-            patrol_active = (
-                (15 <= tick <= 18) or
-                (25 <= tick <= 28) or
-                (35 <= tick <= 38) or
-                (68 <= tick <= 74) or
-                (45 <= tick <= 61) or
-                (90 <= tick <= 110)
-            )
-            self.publish_patrol_triggered(patrol_active, tick=tick)
+            # self.publish_inputs(tick)
+            if tick == 2:
+                self.publish_patrol_triggered(True, tick=tick)
+                print("Publish parol triggered")
             time.sleep(period)
 
 
 
-def main(args=None):
+def main(args=None) -> None:
     rclpy.init(args=args)
     node = MedicalBtRosTestDriver()
     executor = rclpy.executors.MultiThreadedExecutor()

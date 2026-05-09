@@ -168,10 +168,8 @@ public:
 
     static PortsList providedPorts() { return {}; }
     NodeStatus onStart() override { 
-        std::cout<<"IdleWait Onstart \n";
         return NodeStatus::RUNNING; }
     NodeStatus onRunning() override {
-        std::cout<<"IdleWait OnRunning \n"; 
         return NodeStatus::RUNNING; }
     void onHalted() override {}
 };
@@ -192,6 +190,7 @@ public:
 
     NodeStatus onStart() override
     {
+        std::cout<<"Navgate to start\n";
         const auto target = getInput<int>("target").value_or(-1);
         const auto nav_type_str = getInput<std::string>("nav_type").value_or("stop");
         const int nav_type = navTypeFromString(nav_type_str);
@@ -245,6 +244,7 @@ public:
             {
                 return NodeStatus::FAILURE;
             }
+            std::cout<<"Navgate to goal complete status="<<int(wrapped.result->status.status)<<"\n";
             return (wrapped.result->status.status == interfaces::msg::ActionStatus::OK)
                        ? NodeStatus::SUCCESS
                        : NodeStatus::FAILURE;
@@ -290,6 +290,7 @@ public:
 
     NodeStatus onStart() override
     {
+        std::cout<<"LLMInteraction start\n";
         const auto mode_str = getInput<std::string>(NodePort::mode).value_or("passive");
         int mode = interactionModeFromString(mode_str);
         const int person_id = getInput<int>(NodePort::person_id).value_or(-1);
@@ -347,6 +348,8 @@ public:
 
             setOutput(NodePort::call_nurse, wrapped.result->need_call_nurse);
             setOutput(NodePort::summary, wrapped.result->summary);
+            std::cout<<"LLMInteraction geting  Result"<<int(wrapped.result->status.status)<<"\n";
+
             return (wrapped.result->status.status == interfaces::msg::ActionStatus::OK)
                        ? NodeStatus::SUCCESS
                        : NodeStatus::FAILURE;
@@ -390,6 +393,7 @@ public:
 
     NodeStatus onStart() override
     {
+        std::cout<<"CallDutyNurse start\n";
         const int bed_id = getInput<int>(NodePort::bed_id).value_or(-1);
         const auto summary = getInput<std::string>(NodePort::summary).value_or("unknown");
         if (bed_id >= 0)
@@ -461,6 +465,7 @@ public:
                 pending_summaries_.clear();
             }
             setOutput(NodePort::call_nurse, !ok);
+            std::cout<<"Callduty nurse geting  Result"<<int(wrapped.result->status.status)<<"\n";
             return ok ? NodeStatus::SUCCESS : NodeStatus::FAILURE;
         }
 
@@ -506,6 +511,15 @@ public:
             queue.erase(queue.begin());
             setOutput(NodePort::bed_queue, queue);
             setOutput(NodePort::bed_id, bed_id);
+            std::cout<<">>>>>>>>>>>>>>>Select next bed"<<"\n";
+            std::cout<<"bed queue size=: "<<queue.size()<<"\n";
+            std::cout<<"bed queue:";
+            for(auto i:queue){
+                std::cout<<i<<" ";
+            }
+            std::cout<<"\n";
+            std::cout<<"selected bed: "<<bed_id<<"\n";
+
             return NodeStatus::SUCCESS;
         }
         setOutput(NodePort::bed_queue, queue);
@@ -599,6 +613,7 @@ public:
         }
         patrol_ctx_->point_index = index;
         setOutput(NodePort::patrol_point, point);
+        std::cout<<">>>>>>>>>>>>>>>Select next patrol point ="<<point<<"\n";
         return NodeStatus::SUCCESS;
     }
 
@@ -648,8 +663,16 @@ public:
             setOutput(NodePort::context, res->is_anomaly ? res->details : std::string(""));
             return NodeStatus::SUCCESS;
         }
-
         std::vector<int> bed_queue(res->bed_ids.begin(), res->bed_ids.end());
+
+        std::cout<<"Detect bed process get bed queue:";
+        for (auto bed_id :bed_queue)
+        {
+            std::cout<<bed_id<<" ";
+        }
+        std::cout<<"\n";
+        std::cout<<"bedqueue size: "<<bed_queue.size()<<"\n";
+
         setOutput(NodePort::bed_queue, bed_queue);
         return NodeStatus::SUCCESS;
     }
@@ -710,7 +733,7 @@ int main(int argc, char** argv)
     ros_node->declare_parameter("battery_low_threshold", 20.0);
     ros_node->declare_parameter("battery_full_threshold",80.0);
     ros_node->declare_parameter("config_id", std::string("default"));
-    ros_node->declare_parameter("max_ticks", 100);
+    ros_node->declare_parameter("max_ticks", 100000);
 
     ros_ctx->battery_low_threshold = ros_node->get_parameter("battery_low_threshold").as_double();
     ros_ctx->battery_full_threshold = ros_node->get_parameter("battery_full_threshold").as_double();
@@ -831,9 +854,15 @@ int main(int argc, char** argv)
         {OutputPort<bool>(NodePort::patrol_triggered)});
 
     factory.registerSimpleCondition("IsBedProcessComplete",[](TreeNode& node){
-        const int bed_id = node.getInput<int>(NodePort::bed_id).value_or(-1);
-        return bed_id==-1? NodeStatus::SUCCESS:NodeStatus::FAILURE;
-    },{InputPort<int>(NodePort::bed_id)});
+        const auto bed_queue = node.getInput<std::vector<int>>(NodePort::bed_queue).value_or(std::vector<int>{});
+       std::cout<<"Isbedprocess complete get bed queue \n";
+        for (auto bed_id : bed_queue)
+        {
+            std::cout<<"bed_id: "<<bed_id<<"\n";
+        }
+        std::cout<<"bedqueue size: "<<bed_queue.size()<<"\n";
+        return bed_queue.empty()? NodeStatus::SUCCESS:NodeStatus::FAILURE;
+    },{InputPort<std::vector<int>>(NodePort::bed_queue)});
     
     factory.registerSimpleCondition("IsPatrolComplete", [patrol_ctx](TreeNode&) {
         if (patrol_ctx->cycles_remaining <= 0) {
@@ -894,7 +923,7 @@ int main(int argc, char** argv)
         Groot2Publisher bt_publisher(tree,1667);
 
         const int max_ticks = ros_node->get_parameter("max_ticks").as_int();
-        const float kTickHz = 1;
+        const float kTickHz = 10;
         rclcpp::Rate rate(kTickHz);
 
         for (int tick = 0; tick < max_ticks && rclcpp::ok(); ++tick)
@@ -903,7 +932,7 @@ int main(int argc, char** argv)
             try
             {
                 tree.tickOnce();
-                std::cout << "tic tree " << tick << "\n";
+                // std::cout << "tic tree " << tick << "\n";
             }
             catch (const std::exception& e)
             {

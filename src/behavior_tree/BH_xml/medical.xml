@@ -136,7 +136,7 @@
       </Sequence>
       <Sequence name="PatrolRun">
         <Fallback>
-          <IsBedProcessComplete bed_id="{bed_id}"/>
+          <IsBedProcessComplete bed_queue="{bed_queue}"/>
           <SubTree ID="BedProcessTree"
                    _autoremap="true"/>
         </Fallback>
@@ -198,7 +198,7 @@
     </Condition>
     <Condition ID="IsBedProcessComplete"
                editable="true">
-      <input_port name="bed_id"/>
+      <input_port name="bed_queue"/>
     </Condition>
     <Condition ID="IsCallSignal"
                editable="true">
