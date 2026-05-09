@@ -143,10 +143,48 @@ class OneShotTtsServiceNode(Node):
 
         self.get_logger().info("初始化一次性 TTS 服务节点...")
 
-        # 创建独立 callback
+        self.callback = None
+        self.qwen_tts_realtime = None
+
+        # # 创建独立 callback
+        # self.callback = OneShotTtsCallback(self)
+
+        # # 初始化全局 TTS 实例，不绑定 callback
+        # self.qwen_tts_realtime = QwenTtsRealtime(
+        #     model='qwen3-tts-instruct-flash-realtime',
+        #     callback=self.callback,
+        #     url='wss://dashscope.aliyuncs.com/api-ws/v1/realtime'
+        # )
+        # self.qwen_tts_realtime.connect()
+        # self.get_logger().info("TTS WebSocket 已连接")
+
+        # self.qwen_tts_realtime.update_session(
+        #     voice='Cherry',
+
+        #     # 语速调节
+        #     speech_rate=0.8,
+
+        #     response_format=AudioFormat.PCM_24000HZ_MONO_16BIT,
+        #     optimize_instructions=True,
+        #     mode='commit'
+        # )
+
+        # 注册服务
+        self.service = self.create_service(
+            TtsOneshot,
+            'tts_one_shot',
+            self.handle_request
+        )
+
+        self.get_logger().info("一次性 TTS 服务节点启动完成，等待调用...")
+
+    def handle_request(self, req: TtsOneshot.Request, res: TtsOneshot.Response):
+        text_to_speak = req.tts_text
+        block = req.block
+        self.get_logger().info(f"收到一次性 TTS 请求: {text_to_speak}")
+
         self.callback = OneShotTtsCallback(self)
 
-        # 初始化全局 TTS 实例，不绑定 callback
         self.qwen_tts_realtime = QwenTtsRealtime(
             model='qwen3-tts-instruct-flash-realtime',
             callback=self.callback,
@@ -166,45 +204,8 @@ class OneShotTtsServiceNode(Node):
             mode='commit'
         )
 
-        # 注册服务
-        self.service = self.create_service(
-            TtsOneshot,
-            'tts_one_shot',
-            self.handle_request
-        )
-
-        self.get_logger().info("一次性 TTS 服务节点启动完成，等待调用...")
-
-    def handle_request(self, req: TtsOneshot.Request, res: TtsOneshot.Response):
-        text_to_speak = req.tts_text
-        block = req.block
-        self.get_logger().info(f"收到一次性 TTS 请求: {text_to_speak}")
-
-        if not self.callback.connected:
-            self.qwen_tts_realtime = QwenTtsRealtime(
-                model='qwen3-tts-instruct-flash-realtime',
-                callback=self.callback,
-                url='wss://dashscope.aliyuncs.com/api-ws/v1/realtime'
-            )
-            self.qwen_tts_realtime.connect()
-            self.get_logger().info("TTS WebSocket 已连接")
-
-            self.qwen_tts_realtime.update_session(
-                voice='Cherry',
-
-                # 语速调节
-                speech_rate=0.8,
-
-                response_format=AudioFormat.PCM_24000HZ_MONO_16BIT,
-                optimize_instructions=True,
-                mode='commit'
-            )
-
         self.callback.wait_for_connected()
 
-        # 创建独立 callback
-        callback = OneShotTtsCallback(self)
-        self.qwen_tts_realtime.callback = callback
 
         # 追加文本并提交
         self.qwen_tts_realtime.append_text(text_to_speak)
@@ -214,8 +215,10 @@ class OneShotTtsServiceNode(Node):
         if block:
             time.sleep(0.1)
             # 阻塞等待播放完成
-            callback.wait_until_done()
-        self.get_logger().info("一次性 TTS 播放完成，服务返回")
+            self.callback.wait_until_done()
+        print("一次性 TTS 播放完成，服务返回")
+
+        # del self.callback, self.qwen_tts_realtime
 
         res.result = True
         return res

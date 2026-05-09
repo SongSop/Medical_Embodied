@@ -56,3 +56,4 @@ doc/
 # Catkin custom files
 # CATKIN_IGNORE
 
+Qwen3-TTS-12Hz-0.6B-CustomVoice/
