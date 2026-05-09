@@ -60,13 +60,16 @@ class FastLIOLocalization(Node):
                 ("pcd_map_path", ""),
                 ("odom_topic", "/odom_fastlio"),
                 ("map_frame", "map_fastlio"),
-                ("status_print", True),
-                ("status_clear_screen", True),
+                ("status_print", False),
+                ("status_clear_screen", False),
                 ("status_print_period", 1.0),
+                ("verbose_log", False),
+                ("warning_log_period", 5.0),
                 ("coarse_correspondence_distance", 15.0),
                 ("fine_correspondence_distance", 3.0),
             ],
         )
+        self.last_warning_log_times = {}
 
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
@@ -87,6 +90,20 @@ class FastLIOLocalization(Node):
         self.timer_localisation = self.create_timer(1.0 / self.get_parameter("freq_localization").value, self.localisation_timer_callback)
         self.timer_global_map = self.create_timer(1.0 / self.get_parameter("freq_global_map").value, self.global_map_callback)
         self.timer_status = self.create_timer(self.get_parameter("status_print_period").value, self.status_timer_callback)
+
+    def log_verbose(self, message):
+        if self.get_parameter("verbose_log").value:
+            self.get_logger().info(message)
+        else:
+            self.get_logger().debug(message)
+
+    def warn_throttled(self, key, message):
+        now = time.time()
+        period = float(self.get_parameter("warning_log_period").value)
+        last = self.last_warning_log_times.get(key, 0.0)
+        if now - last >= period:
+            self.last_warning_log_times[key] = now
+            self.get_logger().warn(message)
 
     def global_map_callback(self):
         if self.global_map is None:
@@ -201,43 +218,43 @@ class FastLIOLocalization(Node):
     def global_localization(self, pose_estimation):
         if self.cur_scan is None:
             self.last_warning = "waiting for /cloud_registered"
-            self.get_logger().warn("Global localization skipped: no current scan available yet.")
+            self.warn_throttled("no_current_scan", "Global localization skipped: no current scan available yet.")
             return
         if self.cur_odom is None:
             self.last_warning = f"waiting for {self.get_parameter('odom_topic').value}"
-            self.get_logger().warn("Global localization skipped: no odometry received yet.")
+            self.warn_throttled("no_odom", "Global localization skipped: no odometry received yet.")
             return
         if self.global_map is None or len(self.global_map.points) == 0:
             self.last_error = "global map is empty"
-            self.get_logger().warn("Global localization skipped: global map is empty.")
+            self.warn_throttled("empty_global_map", "Global localization skipped: global map is empty.")
             return
 
         self.last_status = "running_icp"
         guess_xyz = pose_estimation[:3, 3]
-        self.get_logger().info(
+        self.log_verbose(
             f"Running global localization. scan_points={len(self.cur_scan.points)}, "
             f"map_points={len(self.global_map.points)}"
         )
-        self.get_logger().info(
+        self.log_verbose(
             "Initial guess map_to_odom translation="
             f"({guess_xyz[0]:.3f}, {guess_xyz[1]:.3f}, {guess_xyz[2]:.3f})"
         )
         scan_tobe_mapped = copy.copy(self.cur_scan)
         scan_points = np.asarray(scan_tobe_mapped.points)
         global_map_in_FOV = self.crop_global_map_in_FOV(pose_estimation)
-        self.get_logger().info(f"Submap points in FOV: {len(global_map_in_FOV.points)}")
+        self.log_verbose(f"Submap points in FOV: {len(global_map_in_FOV.points)}")
         if len(global_map_in_FOV.points) == 0:
             self.last_warning = "submap in FOV is empty"
-            self.get_logger().warn("Global localization skipped: submap in FOV is empty.")
+            self.warn_throttled("empty_fov_submap", "Global localization skipped: submap in FOV is empty.")
             return
 
         transformed_scan_points = self.transform_points(scan_points, pose_estimation)
         submap_points = np.asarray(global_map_in_FOV.points)
-        self.get_logger().info(
+        self.log_verbose(
             "Transformed scan stats in map frame: "
             + self.describe_points(transformed_scan_points)
         )
-        self.get_logger().info(
+        self.log_verbose(
             "Submap stats in map frame: "
             + self.describe_points(submap_points)
         )
@@ -245,13 +262,13 @@ class FastLIOLocalization(Node):
         transformation, coarse_fitness = self.registration_at_scale(
             scan_tobe_mapped, global_map_in_FOV, initial=pose_estimation, scale=5
         )
-        self.get_logger().info(f"Coarse global localization fitness={coarse_fitness:.4f}")
+        self.log_verbose(f"Coarse global localization fitness={coarse_fitness:.4f}")
 
         transformation, fitness = self.registration_at_scale(
             scan_tobe_mapped, global_map_in_FOV, initial=transformation, scale=1
         )
         self.last_fitness = float(fitness)
-        self.get_logger().info(
+        self.log_verbose(
             f"Global localization fitness={fitness:.4f}, "
             f"threshold={self.get_parameter('localization_threshold').value:.4f}"
         )
@@ -262,7 +279,7 @@ class FastLIOLocalization(Node):
             self.last_map_to_odom_xyz = [float(xyz[0]), float(xyz[1]), float(xyz[2])]
             self.last_status = "localized"
             self.last_warning = "none"
-            self.get_logger().info(
+            self.log_verbose(
                 f"Global localization accepted. map_to_odom translation="
                 f"({xyz[0]:.3f}, {xyz[1]:.3f}, {xyz[2]:.3f})"
             )
@@ -273,7 +290,11 @@ class FastLIOLocalization(Node):
                 f"fitness {fitness:.4f} below threshold "
                 f"{self.get_parameter('localization_threshold').value:.4f}"
             )
-            self.get_logger().warn(f"Fitness score {fitness} less than localization threshold {self.get_parameter('localization_threshold').value}")
+            self.warn_throttled(
+                "fitness_below_threshold",
+                f"Fitness score {fitness:.4f} less than localization threshold "
+                f"{self.get_parameter('localization_threshold').value:.4f}",
+            )
 
     def voxel_down_sample(self, pcd, voxel_size):
         # print(pcd)
@@ -358,11 +379,11 @@ class FastLIOLocalization(Node):
         T_odom_to_base_link = self.pose_to_mat(self.cur_odom.pose.pose)
         initial_map_to_odom = np.matmul(T_map_to_base_link, self.inverse_se3(T_odom_to_base_link))
 
-        self.get_logger().info(
+        self.log_verbose(
             "Converted initial pose from map->base to map->odom initial guess."
         )
         guess_xyz = initial_map_to_odom[:3, 3]
-        self.get_logger().info(
+        self.log_verbose(
             "Initial map_to_odom guess from RViz pose="
             f"({guess_xyz[0]:.3f}, {guess_xyz[1]:.3f}, {guess_xyz[2]:.3f})"
         )
@@ -380,7 +401,7 @@ class FastLIOLocalization(Node):
         odom_msg.header.frame_id = self.get_parameter("map_frame").value
         self.pub_map_to_odom.publish(odom_msg)
         self.map_to_odom_publish_count += 1
-        self.get_logger().info("Published /map_to_odom.")
+        self.log_verbose("Published /map_to_odom.")
 
     def localisation_timer_callback(self):
         if not self.initialized:
@@ -388,7 +409,7 @@ class FastLIOLocalization(Node):
             if now - self.last_status_log_time > 5.0:
                 self.last_status_log_time = now
                 self.last_status = "waiting_initial_pose"
-                self.get_logger().info(
+                self.log_verbose(
                     "Waiting for initial pose... "
                     f"odom_received={self.cur_odom is not None}, "
                     f"scan_received={self.cur_scan is not None}, "
@@ -404,7 +425,10 @@ class FastLIOLocalization(Node):
                 self.last_status_log_time = now
                 self.last_status = "waiting_scan"
                 self.last_warning = "initialized but waiting for /cloud_registered"
-                self.get_logger().warn("Initialized but still waiting for /cloud_registered scan input.")
+                self.warn_throttled(
+                    "initialized_waiting_scan",
+                    "Initialized but still waiting for /cloud_registered scan input.",
+                )
 
     def status_timer_callback(self):
         if not self.get_parameter("status_print").value:

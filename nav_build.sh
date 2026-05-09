@@ -27,8 +27,8 @@ fi
 
 echo "[INFO] Building nav packages: ${NAV_PKGS[*]}"
 
-PARALLEL_WORKERS=8
-BUILD_JOBS=8
+PARALLEL_WORKERS=4
+BUILD_JOBS=4
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
