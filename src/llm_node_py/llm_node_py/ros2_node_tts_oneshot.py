@@ -72,6 +72,8 @@ class OneShotTtsCallback(QwenTtsRealtimeCallback):
         self.node = node
         self.complete_event = threading.Event()
 
+        self.connected = False
+
         # 初始化 PyAudio 播放器
         self.p = pyaudio.PyAudio()
         self.stream = self.p.open(
@@ -83,16 +85,23 @@ class OneShotTtsCallback(QwenTtsRealtimeCallback):
         )
 
     def on_open(self) -> None:
-        self.node.get_logger().info('WebSocket 连接已打开，初始化播放器')
+        print('connection opened')
+        self.connected = True
 
     def on_close(self, close_status_code, close_msg) -> None:
         print("websocket 连接关闭。")
+        self.connected = False
         # self.stream.stop_stream()
         # self.stream.close()
         # self.p.terminate()
         # self.node.get_logger().info(
         #     f'WebSocket 连接关闭，释放音频设备: code={close_status_code} msg={close_msg}'
         # )
+
+    # 死等，直到 self.connected 为 True
+    def wait_for_connected(self):
+        while not self.connected:
+            time.sleep(0.1)
 
     def on_event(self, response: str) -> None:  # type: ignore
         try:
@@ -170,6 +179,28 @@ class OneShotTtsServiceNode(Node):
         text_to_speak = req.tts_text
         block = req.block
         self.get_logger().info(f"收到一次性 TTS 请求: {text_to_speak}")
+
+        if not self.callback.connected:
+            self.qwen_tts_realtime = QwenTtsRealtime(
+                model='qwen3-tts-instruct-flash-realtime',
+                callback=self.callback,
+                url='wss://dashscope.aliyuncs.com/api-ws/v1/realtime'
+            )
+            self.qwen_tts_realtime.connect()
+            self.get_logger().info("TTS WebSocket 已连接")
+
+            self.qwen_tts_realtime.update_session(
+                voice='Cherry',
+
+                # 语速调节
+                speech_rate=0.8,
+
+                response_format=AudioFormat.PCM_24000HZ_MONO_16BIT,
+                optimize_instructions=True,
+                mode='commit'
+            )
+
+        self.callback.wait_for_connected()
 
         # 创建独立 callback
         callback = OneShotTtsCallback(self)
