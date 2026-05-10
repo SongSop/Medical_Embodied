@@ -189,6 +189,8 @@ namespace {
         msg.call_nurse = call_nurse;
         msg.reason = reason;
         dialog_session_finished_pub->publish(msg);
+
+        sys_log("send dialog finished msg (beacuse of 'call nurse').");
     }
 
 
@@ -345,6 +347,8 @@ namespace {
             if (need_call) {
                 // 模型回复的内容说一下
                 call_oneshot_tts(response_text, false);
+
+                sys_log("need call nurse: True.");
 
                 // 对话结束，需要呼叫护士，原因是 模型返回的 reason
                 dialog_session_finished(

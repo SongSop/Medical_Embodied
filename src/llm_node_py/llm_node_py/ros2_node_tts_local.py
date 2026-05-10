@@ -185,6 +185,8 @@ class LocalTtsServiceNode(Node):
                 return
             text, audio, sample_rate = self.ttsRealtimeQueue.popleft()
 
+        print(f"正在播放：{text}")
+
         # 遇到 "[DONE]" 的时候说明，之前所有的语句都全部合成完了
         if text == "[DONE]":
             self.publishTtsSessionFinished()
