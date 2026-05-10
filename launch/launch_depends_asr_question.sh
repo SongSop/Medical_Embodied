@@ -14,7 +14,7 @@ PYTHON_NODES=(
     # 是否需要呼叫护士
     "../src/llm_node_py/llm_node_py/ros2_node_nurse_alert.py"
     # 一次性的 tts
-    "../src/llm_node_py/llm_node_py/ros2_node_tts_oneshot.py"
+    # "../src/llm_node_py/llm_node_py/ros2_node_tts_oneshot.py"
     # 大模型-知识库
     "../src/llm_node_py/llm_node_py/ros2_node_llm_medical.py"
     # 大模型-联网查找

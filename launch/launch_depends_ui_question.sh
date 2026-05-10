@@ -9,7 +9,12 @@ TMUX_SESSION="depends_ui_question"
 
 PYTHON_NODES=(
     # 实时的 tts
-    "../src/llm_node_py/llm_node_py/ros2_node_tts_realtime.py"
+    # "../src/llm_node_py/llm_node_py/ros2_node_tts_realtime.py"
+    
+    # 实时 TTS + 流式 TTS
+    "../src/llm_node_py/llm_node_py/ros2_node_tts_local.py"
+
+
     # 输入大模型的流式文本，向外输出整个文本
     "../src/llm_node_py/llm_node_py/ros2_node_stream_text.py"
     # 管理多个 question
