@@ -3,8 +3,11 @@ import time
 import rclpy
 
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from std_msgs.msg import Bool
+from rclpy.callback_groups import ReentrantCallbackGroup
 
 """
 监听 session 对话结束的消息：
@@ -38,7 +41,6 @@ from interfaces.action import LLMInteraction
 from interfaces.msg import ActionStatus
 from llm_node_comm.msg import DialogSessionFinished
 from llm_node_comm.srv import TtsOneshot
-from rclpy.executors import MultiThreadedExecutor
 
 # 定义告警模式常量（与 action goal.mode 的值保持一致）。
 INTERACTION_ALERT = 0
@@ -54,6 +56,10 @@ class LLMMockServer(Node):
 
         super().__init__('llm_mock_server')
 
+        self.actionCallbackGroup = ReentrantCallbackGroup()
+        self.dialogSessionFinishedCallbackGroup = ReentrantCallbackGroup()
+        self.ttsClientCallbackGroup = ReentrantCallbackGroup()
+
         # 开始进行 asr 
         self.start_asr_pub = self.create_publisher(
             Bool, 'start_asr', 10
@@ -63,12 +69,14 @@ class LLMMockServer(Node):
             DialogSessionFinished, 
             'dialog_session_finished', 
             self.dialog_session_finished_callback, 
-            10
+            10,
+            callback_group=self.dialogSessionFinishedCallbackGroup,
         )
         # 发送一次性消息，进行一次性的语音合成
         self.tts_client = self.create_client(
             TtsOneshot, 
-            'tts_one_shot'
+            'tts_one_shot',
+            callback_group=self.ttsClientCallbackGroup,
         )
 
         # 初始化“对话是否结束”标志位，默认 True 表示当前无进行中的会话。
@@ -85,7 +93,8 @@ class LLMMockServer(Node):
             'llm_interaction', 
             execute_callback=self.execute_callback, 
             goal_callback=self.goal_callback, 
-            cancel_callback=self.cancel_callback
+            cancel_callback=self.cancel_callback,
+            callback_group=self.actionCallbackGroup,
         )
 
         self.get_logger().info('llm_mock_server started')
@@ -134,15 +143,7 @@ class LLMMockServer(Node):
             req.block = True
 
             # 调用服务，进行语音合成
-            future = self.tts_client.call_async(req)
-            # 阻塞，直到服务结束
-            rclpy.spin_until_future_complete(self, future)
-            resp = future.result()
-            
-            if resp is not None and resp.result:
-                self.get_logger().info('TTS 播放成功')
-            else:
-                self.get_logger().warn('TTS 播放失败')
+            self.tts_client.call(req)
 
             result.status.status = ActionStatus.OK
             result.summary = 'alert patient, no need for calling nurse.'
@@ -151,6 +152,15 @@ class LLMMockServer(Node):
             return result
         # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         
+        # --------------------------------------------------
+        # 说几句客套话
+        req = TtsOneshot.Request()
+        req.tts_text = '您好，我是小医，您需要什么帮助吗？'
+        req.block = True
+
+        # 调用服务，进行语音合成
+        self.tts_client.call(req)
+        # --------------------------------------------------
 
         # 非告警模式先发送一次“收到上下文”的反馈信息。
         feedback.partial = f'Received context for person {goal.person_id}'
@@ -166,6 +176,7 @@ class LLMMockServer(Node):
         self.start_asr_pub.publish(msg)
 
         # 在未收到 dialog_session_finished 前持续轮询等待。
+        print("running... ...")
         while not self.dialog_session_finished:
 
             # 若客户端请求取消，则立即返回 PREEMPTED。
@@ -180,10 +191,10 @@ class LLMMockServer(Node):
             feedback.partial = 'running'
             goal_handle.publish_feedback(feedback)
 
-            print("running ... ...")
-
             # 异步等待 0.2 秒，避免忙等并与参考节奏保持一致。
             time.sleep(0.2)
+
+        print("action exited.")
 
         # end of 'while' 退出循环说明对话已经结束了
 
@@ -207,7 +218,7 @@ def main(args=None):
     rclpy.init(args=args)
     node = LLMMockServer()
 
-    executor = MultiThreadedExecutor()
+    executor = MultiThreadedExecutor(num_threads=5)
     executor.add_node(node)
     
     try:
