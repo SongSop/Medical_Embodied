@@ -96,6 +96,7 @@ def generate_launch_description():
                         "default_trig_val": True,
                         "coalesce_interval": 0.01,
                         "symmetric_motion": True,
+                        "autorepeat_after": 20,
                     }
                 ],
             ),
