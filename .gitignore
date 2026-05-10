@@ -51,6 +51,8 @@ doc/
 # 远端 api 的密码
 *.key
 
+*.wav
+
 *.codex
 
 # Catkin custom files
