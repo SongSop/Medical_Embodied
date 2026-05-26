@@ -8,7 +8,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 def generate_launch_description():
     port_arg = DeclareLaunchArgument(
         'battery_port',
-        default_value='/dev/ttyUSB0',
+        default_value='/dev/battery',
         description='Serial device for BMS',
     )
     baud_arg = DeclareLaunchArgument(

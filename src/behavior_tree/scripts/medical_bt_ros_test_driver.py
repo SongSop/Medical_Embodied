@@ -48,7 +48,7 @@ class MedicalBtRosTestDriver(Node):
         # self.call_signal_pub = self.create_publisher(Bool, '/call_signal', 10)
         self.patrol_trigger_pub = self.create_publisher(Bool, '/patrol_triggered', 1)
 
-        # self.create_service(DetectAnomaly, '/detect_anomaly', self.handle_detect_anomaly)
+        self.create_service(DetectAnomaly, '/detect_anomaly', self.handle_detect_anomaly)
         # self.create_service(FaceIdentify, '/face_identify', self.handle_face_identify)
         self.create_service(SetConfig, '/loadconfig/set_config', self.handle_set_config)
 
@@ -96,8 +96,8 @@ class MedicalBtRosTestDriver(Node):
         if request.mode == DETECT_AREA:
             response.is_anomaly = False
             response.details = 'scan'
-            response.bed_ids = [1, 0]
-            response.urgencies = [1, 2]
+            response.bed_ids = [1, 0,3]
+            response.urgencies = [1, 2,3]
             return response
         is_anomaly = (request.area_bed_id % 2 == 0)
         response.is_anomaly = is_anomaly
@@ -147,14 +147,14 @@ class MedicalBtRosTestDriver(Node):
                 self.metrics.nav_patrol += 1
         time.sleep(0.05)
         feedback = Navigate.Feedback()
-        for i in range(10):
+        for i in range(20):
             if goal_handle.is_cancel_requested:
                 goal_handle.canceled()
                 result = Navigate.Result()
                 result.message = 'Goal canceled'
                 print("goal canceled")
                 return result
-            feedback.progress = i / 9.0
+            feedback.progress = (i+1) / 5.0
             time.sleep(0.5)
             print("sending navigate feed back i=", i)
             goal_handle.publish_feedback(feedback)

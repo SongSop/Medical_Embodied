@@ -56,6 +56,30 @@ CAMERAS.append(
 )
 
 
+def _isolated_ld_library_path():
+    """Filter out overlaid image_transport libs to avoid ABI mismatch."""
+    ld_library_path = os.environ.get('LD_LIBRARY_PATH', '')
+    if not ld_library_path:
+        return ld_library_path
+
+    filtered = []
+    for path in ld_library_path.split(':'):
+        if not path:
+            continue
+        normalized = os.path.normpath(path)
+        if normalized.endswith(os.path.join('install', 'image_transport', 'lib')):
+            continue
+        filtered.append(path)
+    return ':'.join(filtered)
+
+
+def _camera_node_env():
+    env = {'LD_LIBRARY_PATH': _isolated_ld_library_path()}
+    # rcl_logging_spdlog requires HOME to resolve ~/.ros/log.
+    env['HOME'] = os.environ.get('HOME', str(Path.home()))
+    return env
+
+
 def generate_launch_description():
     ld = LaunchDescription()
 
@@ -69,7 +93,8 @@ def generate_launch_description():
             name=camera.name,
             namespace=camera.namespace,
             parameters=[camera.param_path],
-            remappings=camera.remappings
+            remappings=camera.remappings,
+            additional_env=_camera_node_env()
         )
         for camera in CAMERAS
     ]

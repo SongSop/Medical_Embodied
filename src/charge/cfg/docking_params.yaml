@@ -1,0 +1,100 @@
+qr_docking_node:
+  ros__parameters:
+    # 目标停靠距离（米）：机器人与充电桩标签的期望最终距离
+    target_distance: -0.455
+    # 横向误差容忍（米）：|y 方向偏差| 小于该值视为对齐
+    horizontal_tolerance: 0.03
+    # 角度误差容忍（弧度）：|偏航误差| 小于该值视为朝向对齐
+    angular_tolerance: 0.15
+    # 线速度上限（米/秒）：前进/后退控制最大速度
+    linear_max_speed: 0.1
+    # 角速度上限（弧度/秒）：转向控制最大速度
+    angular_max_speed: 0.2
+    # 丢失标签后的搜索角速度（弧度/秒）
+    search_angular_speed: 0.25
+
+    # 线速度 PID 参数（距离误差 -> 线速度）
+    linear_kp: 0.5
+    linear_ki: 0.0
+    linear_kd: 0.1
+    # 角速度 PID 参数（角度/横向误差 -> 角速度）
+    angular_kp: 1.5
+    angular_ki: 0.0
+    angular_kd: 0.1
+    # 仅在 source=odom（标签丢失里程计外推）时生效的 PID 降权系数
+    odom_linear_pid_scale: 0.2
+    odom_angular_pid_scale: 0.2
+
+    # PID 积分项限幅（防积分饱和）
+    linear_error_sum_max: 1.0
+    angular_error_sum_max: 0.5
+
+    # 单次对接最大时长（秒），超时后退出本次流程
+    max_docking_duration_sec: 120.0
+    # 标签数据超时（秒）：超过该时间未收到新标签数据视为超时
+    tag_timeout_sec: 2.0
+    # 标签连续丢失最大时长（秒）：超过后触发失败/重试逻辑
+    max_tag_lost_sec: 10.0
+    # 对接开始后的 tag 启动宽限时间（秒）：识别节点起步阶段不因无 tag 判失败
+    tag_startup_grace_sec: 5.0
+    # 是否启用 tag 丢失后的里程计误差外推（true=启用，false=仅搜索）
+    enable_odom_fallback: true
+    # 最大重试次数：超过后对接任务失败
+    max_retry_count: 5
+    # 完成判定稳定周期数：连续满足到位条件 N 个控制周期才算成功
+    done_stable_cycles: 8
+    # 成功/退出前额外发布 0 速度的次数，确保底盘稳定停车
+    stop_publish_count: 5
+
+    # 触发重试的距离误差阈值（米）
+    retry_threshold: 0.5
+    # 重试机动持续时间（秒）：时长过大会导致前进/后退重试动作过长
+    retreat_duration_sec: 5.0
+    # 重试后退速度（米/秒）
+    retreat_speed: 0.1
+    # 重试时角速度放大系数（相对常规控制）
+    retreat_angular_factor: 1.5
+    # 重试时横向修正放大系数（相对常规控制）
+    retreat_lateral_factor: 0.5
+    # 低速僵持判定线速度阈值（米/秒）：横向误差仍大且线速度低于该值会触发重试
+    retry_stall_linear_speed_threshold: 0.01
+    # 连续僵持周期数（控制周期个数）达到后触发下一次前进重试
+    retry_stall_cycles: 8
+    # 第一段预对齐安全余量（米）：距离目标超过该余量时优先纠偏
+    pre_align_distance_margin: 0.6
+    # 第一段预对齐线速度上限（米/秒）
+    pre_align_linear_max_speed: 0.04
+    # 第二段最终靠近窗口（米）：进入该窗口后启用更低线速度上限
+    final_approach_distance_window: 0.6
+    # 第二段最终靠近线速度上限（米/秒）
+    final_approach_linear_max_speed: 0.05
+    # 第一段横向误差转向增益（越大横向纠偏越积极）
+    pre_align_lateral_gain: 2.0
+    # 第二段横向误差转向增益（用于加强最终靠近时的平移纠偏）
+    final_approach_lateral_gain: 2.0
+    # 横向纠偏最小前视距离（米）：越小越敏感，避免第二段纠偏偏弱
+    lateral_lookahead_min: 0.05
+    # 横向误差直接补偿系数（米->角速度），用于加强平移纠偏响应
+    lateral_direct_k: 1.2
+    # 第一段横向直接补偿缩放
+    pre_align_lateral_direct_scale: 0.8
+    # 第二段横向直接补偿缩放（建议高于第一段）
+    final_approach_lateral_direct_scale: 1.8
+    # 横向直接补偿角速度限幅（弧度/秒）
+    lateral_direct_max: 0.12
+
+    # 机器人基坐标系（TF frame）
+    base_frame: "base_link"
+    # 充电桩标签坐标系（TF frame）
+    tag_frame: "dock_frame"
+    # 控制周期（秒）：控制循环执行间隔
+    control_period: 0.1
+    # 当前偏差发布话题（Vector3Stamped: x=dx, y=dy, z=dyaw）
+    error_topic: "/docking/current_error"
+    # 偏差发布频率（Hz）
+    error_publish_hz: 20.0
+
+charge_services:
+  ros__parameters:
+    # 充电状态查询超时（秒）
+    state_timeout_sec: 5.0

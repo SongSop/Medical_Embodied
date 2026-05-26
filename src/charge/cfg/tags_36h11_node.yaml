@@ -1,0 +1,15 @@
+/**:
+  ros__parameters:
+    image_transport: raw
+    family: 36h11
+    size: 0.06
+    threads: 4
+    max_hamming: 0
+    z_up: true
+    decimate: 0.0
+    blur: 1.0
+    refine-edges: 1
+    debug: 0
+    tag_ids: [2]
+    tag_frames: [dock_frame]
+    tag_sizes: [0.06]

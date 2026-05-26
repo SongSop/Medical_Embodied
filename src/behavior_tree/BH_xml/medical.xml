@@ -21,11 +21,14 @@
         <Sequence name="DialogOrAlert">
           <FaceIdentify person_id="{person_id}"
                         face_confidence="{face_confidence}"/>
-          <LLMInteraction mode="{interaction_mode}"
-                          person_id="{person_id}"
-                          context="{context}"
-                          call_nurse="{call_nurse}"
-                          summary="{summary}"/>
+          <Fallback>
+            <LLMInteraction mode="{interaction_mode}"
+                            person_id="{person_id}"
+                            context="{context}"
+                            call_nurse="{call_nurse}"
+                            summary="{summary}"/>
+            <IdleWait/>
+          </Fallback>
           <ClearInteractionMode mode="{interaction_mode}"/>
         </Sequence>
       </Sequence>
@@ -91,11 +94,14 @@
                    nav_type="stop"/>
         <FaceIdentify person_id="{person_id}"
                       face_confidence="{face_confidence}"/>
-        <LLMInteraction mode="interrupt"
-                        person_id="{person_id}"
-                        context="{context}"
-                        call_nurse="{call_nurse}"
-                        summary="{summary}"/>
+        <Fallback>
+          <LLMInteraction mode="interrupt"
+                          person_id="{person_id}"
+                          context="{context}"
+                          call_nurse="{call_nurse}"
+                          summary="{summary}"/>
+          <IdleWait/>
+        </Fallback>
         <RestoreContext/>
       </Sequence>
       <Sequence name="PatrolTriggered">

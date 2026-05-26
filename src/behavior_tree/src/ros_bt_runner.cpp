@@ -197,9 +197,15 @@ public:
 
         if (!navigate_client_->wait_for_action_server(100ms))
         {
+            if(nav_type_str=="stop"){
+                std::cout << "Navgate server not found, nav type is "<<nav_type_str<<"\n";
+                return NodeStatus::SUCCESS;
+            }
             std::cout << "[ERR ] NavgateTo no server\n";
             return NodeStatus::FAILURE;
         }
+        std::cout << " NavgateTo server Find\n";
+        
 
         interfaces::action::Navigate::Goal goal;
         goal.target_index = target;
@@ -217,11 +223,13 @@ public:
         {
             if (send_future_.wait_for(0ms) != std::future_status::ready)
             {
+                // std::cout << " NavgateTo waiting goal\n";
                 return NodeStatus::RUNNING;
             }
             goal_handle_ = send_future_.get();
             if (!goal_handle_)
             {
+                // std::cout << " NavgateTo get empty goal handle\n";
                 phase_ = Phase::IDLE;
                 return NodeStatus::FAILURE;
             }
@@ -232,6 +240,7 @@ public:
 
         if (phase_ == Phase::WAIT_RESULT)
         {
+            // std::cout << " NavgateTo get goal handle waiting res\n";
             if (result_future_.wait_for(0ms) != std::future_status::ready)
             {
                 return NodeStatus::RUNNING;
@@ -295,9 +304,10 @@ public:
         int mode = interactionModeFromString(mode_str);
         const int person_id = getInput<int>(NodePort::person_id).value_or(-1);
         const auto context = getInput<std::string>(NodePort::context).value_or("none");
-
+        std::cout<<"LLMInteraction mode="<<mode_str<<" person_id="<<person_id<<" context="<<context<<"\n";
         if (!llm_client_->wait_for_action_server(100ms))
         {
+            std::cout<<"[ERR ] LLMInteraction no server\n";
             return NodeStatus::FAILURE;
         }
 
@@ -733,7 +743,7 @@ int main(int argc, char** argv)
     ros_node->declare_parameter("battery_low_threshold", 20.0);
     ros_node->declare_parameter("battery_full_threshold",80.0);
     ros_node->declare_parameter("config_id", std::string("default"));
-    ros_node->declare_parameter("max_ticks", 100000);
+    ros_node->declare_parameter("max_ticks", 10000000);
 
     ros_ctx->battery_low_threshold = ros_node->get_parameter("battery_low_threshold").as_double();
     ros_ctx->battery_full_threshold = ros_node->get_parameter("battery_full_threshold").as_double();
@@ -883,6 +893,7 @@ int main(int argc, char** argv)
         "IsCallSignal", [](TreeNode& node) {
             const bool active = node.getInput<bool>(NodePort::call_signal).value_or(false);
             if(active){
+                std::cout<<"call signal active\n";
                 node.setOutput(NodePort::call_signal,false);
                 return NodeStatus::SUCCESS;
             }

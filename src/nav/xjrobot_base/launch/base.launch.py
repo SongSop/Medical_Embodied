@@ -1,8 +1,13 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import (
+    Command,
+    LaunchConfiguration,
+    PathJoinSubstitution,
+    PythonExpression,
+)
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
@@ -66,9 +71,24 @@ def generate_launch_description():
                 default_value="true",
                 description="Launch ground segmentation for rotated lidar pointcloud",
             ),
+            DeclareLaunchArgument(
+                "chassis_only",
+                default_value="false",
+                description="If true, launch only chassis-related nodes and joy node",
+            ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(livox_launch_path),
-                condition=IfCondition(LaunchConfiguration("launch_livox")),
+                condition=IfCondition(
+                    PythonExpression(
+                        [
+                            "'",
+                            LaunchConfiguration("launch_livox"),
+                            "' == 'true' and '",
+                            LaunchConfiguration("chassis_only"),
+                            "' != 'true'",
+                        ]
+                    )
+                ),
             ),
             # 机器人底盘相关的驱动和控制程序
             Node(
@@ -110,11 +130,22 @@ def generate_launch_description():
                 package="xjrobot_base",
                 executable="mid360_rotation_node",
                 name="mid360_rotation_node",
+                condition=UnlessCondition(LaunchConfiguration("chassis_only")),
                 parameters=[base_params],
             ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(ground_segmentation_launch_path),
-                condition=IfCondition(LaunchConfiguration("launch_ground_segmentation")),
+                condition=IfCondition(
+                    PythonExpression(
+                        [
+                            "'",
+                            LaunchConfiguration("launch_ground_segmentation"),
+                            "' == 'true' and '",
+                            LaunchConfiguration("chassis_only"),
+                            "' != 'true'",
+                        ]
+                    )
+                ),
                 launch_arguments={
                     "pointcloud_topic": "/livox/lidar_rotated/points",
                     "imu_topic": "/livox/imu_rotated",
@@ -125,7 +156,17 @@ def generate_launch_description():
                 package="joint_state_publisher",
                 executable="joint_state_publisher",
                 name="joint_state_publisher",
-                condition=IfCondition(LaunchConfiguration("publish_joints")),
+                condition=IfCondition(
+                    PythonExpression(
+                        [
+                            "'",
+                            LaunchConfiguration("publish_joints"),
+                            "' == 'true' and '",
+                            LaunchConfiguration("chassis_only"),
+                            "' != 'true'",
+                        ]
+                    )
+                ),
                 parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
             ),
             Node(
@@ -133,6 +174,7 @@ def generate_launch_description():
                 executable="robot_state_publisher",
                 name="robot_state_publisher",
                 output="screen",
+                condition=UnlessCondition(LaunchConfiguration("chassis_only")),
                 parameters=[
                     {
                         "use_sim_time": LaunchConfiguration("use_sim_time"),
@@ -145,6 +187,7 @@ def generate_launch_description():
                 executable="ekf_node",
                 name="ekf_filter_node",
                 output="screen",
+                condition=UnlessCondition(LaunchConfiguration("chassis_only")),
                 parameters=[ekf_params],
                 remappings=[("odometry/filtered", "/odom")],
             ),

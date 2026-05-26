@@ -45,9 +45,9 @@
     fastlio_lidar_frame_id: lidar_3d_frame_fastlio
     nav_lidar_frame_id: lidar_3d_link
     rotated_imu_frame_id: imu_link
-    mount_roll_deg: 25.0
+    mount_roll_deg: 0.0
     mount_pitch_deg: 0.0
-    mount_yaw_deg: 90.0
+    mount_yaw_deg: 0.0
     # IMU 角速度单位必须为 rad/s。静止采样取平均后，把残余 bias 填到这里。
     # 例如静止时 /livox/imu_rotated.angular_velocity.z = 0.018，则设置第三项为 0.018。
     imu_angular_velocity_bias: [0.0, 0.0, -0.024]

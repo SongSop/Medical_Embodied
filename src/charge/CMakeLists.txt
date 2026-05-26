@@ -26,6 +26,16 @@ endif ()
 install(TARGETS battery_status_get
   DESTINATION lib/${PROJECT_NAME}
 )
+install(PROGRAMS
+  charge/charge_services.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME charge_services
+)
+install(PROGRAMS
+  charge/qr_docking_node.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME qr_docking_node
+)
 install(DIRECTORY cfg
     DESTINATION share/${PROJECT_NAME}
 )

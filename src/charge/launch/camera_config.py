@@ -38,7 +38,7 @@ USB_CAM_DIR = get_package_share_directory('charge')
 
 class CameraConfig(BaseModel):
     name: str = 'camera1'
-    param_path: Path = Path(USB_CAM_DIR, 'config', 'params_1.yaml')
+    param_path: Path = Path(USB_CAM_DIR, 'cfg', 'params_1.yaml')
     remappings: Optional[List]
     namespace: Optional[str]
 
@@ -50,7 +50,7 @@ class CameraConfig(BaseModel):
 
     @root_validator
     def validate_root(cls, values):
-        name = values.get('name')
+        name = 'charge_cam'
         remappings = values.get('remappings')
         if name and not remappings:
             # Automatically set remappings if name is set
