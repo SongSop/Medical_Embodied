@@ -1,0 +1,99 @@
+laser_mapping:
+    ros__parameters:
+        feature_extract_enable: false
+        point_filter_num: 1
+        max_iteration: 3
+        filter_size_surf: 0.1
+        filter_size_map: 0.2
+        cube_side_length: 1000.0
+        runtime_pos_log_enable: false
+        map_file_path: "/home/medical/maps/map_0528.pcd"
+
+        common:
+            lid_topic:  "/rslidar_points_fastlio"
+            imu_topic:  "/rslidar_imu_data_rotated"
+            time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
+            time_offset_lidar_to_imu: 0.0 # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
+                                        # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
+
+        frames:
+            map_frame: "map_fastlio"
+            odom_frame: "odom_fastlio"
+            base_frame: "base_link_fastlio" # 实际上是imu系
+            lidar_frame: "lidar_3d_frame_fastlio" 
+            
+        preprocess:
+            lidar_type: 2                # RS 点云经转换后为 PointCloud2(x,y,z,intensity,ring,time)，这里走 Velodyne 预处理分支
+            scan_line:  5
+            blind: 0.0
+            timestamp_unit: 0            # 0=SEC, 1=MS, 2=US, 3=NS（与 FAST-LIO 原版保持一致）
+            scan_rate: 10
+
+        mapping:
+            acc_cov: 0.1
+            gyr_cov: 0.1
+            b_acc_cov: 0.0001
+            b_gyr_cov: 0.0001
+            fov_degree:    120.0
+            det_range:     200.0
+            extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic
+            extrinsic_T: [ 0.004278, -0.015764, -0.011221 ]
+            extrinsic_R: [ 1.0, 0.0, 0.0,
+                            0.0, 1.0, 0.0,
+                            0.0, 0.0, 1.0 ]
+
+        publish:
+            path_en: true                # true: publish Path
+            effect_map_en: false         # true: publish Effects
+            map_en: true                 # true: publish Map cloud
+            scan_publish_en:  true       # false: close all the point cloud output
+            dense_publish_en: false      # false: low down the points number in a global-frame point clouds scan.
+            scan_bodyframe_pub_en: true  # true: output the point cloud scans in IMU-body-frame
+
+        pcd_save:
+            pcd_save_en: false
+            interval: -1                 # how many LiDAR frames saved in each pcd file; 
+                                        # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
+
+global_localization:
+    ros__parameters:
+        map_voxel_size: 0.4
+        scan_voxel_size: 0.1
+        freq_localization: 0.5
+        freq_global_map: 0.25
+        localization_threshold: 0.8
+        fov: 6.28319
+        fov_far: 300
+        pcd_map_topic: "/pcd_map"
+        odom_topic: "/odom_fastlio"
+        map_frame: "map_fastlio"
+        # 实机默认关闭周期性定位状态面板，避免终端刷屏。
+        # 定位异常仍由 global_localization.py 以 warning/error 形式输出。
+        status_print: false
+        status_clear_screen: false
+        status_print_period: 1.0
+        verbose_log: false               # true 时恢复 ICP 过程详细 info，默认仅保留必要异常日志
+        warning_log_period: 5.0          # 同类定位 warning 最短输出间隔，单位 s
+        coarse_correspondence_distance: 15.0
+        fine_correspondence_distance: 3.0
+
+transform_fusion:
+    ros__parameters:
+        odom_topic: "/odom_fastlio"
+        map_child_frame: "odom_fastlio"
+        map_frame: "map_fastlio"
+
+fastlio_relative_odom_node:
+    ros__parameters:
+        fastlio_odom_topic: "/odom_fastlio"
+        fastlio_relative_odom_topic: "/odom_fastlio_relative"
+        fastlio_relative_odom_frame: "odom"
+        fastlio_relative_base_frame: "base_footprint"
+        fastlio_pose_covariance_diagonal: [0.02, 0.02, 1000000.0, 1000000.0, 1000000.0, 0.03]
+        fastlio_twist_covariance_diagonal: [1000.0, 1000.0, 1000000.0, 1000000.0, 1000000.0, 1000.0]
+
+map_publisher:
+    ros__parameters:
+        tf_frame: "map_fastlio"
+        cloud_topic: "/pcd_map"
+        period_ms_: 500

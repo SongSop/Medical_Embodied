@@ -31,7 +31,7 @@ ekf_filter_node:
     # 该话题来自 xjrobot_fastlio_relative_odom，将 /odom_fastlio 的连续位姿转为平面相对位移。
     # 这里只融合平面位姿 x/y/yaw，让 FastLIO 提供中低频位姿纠偏；
     # 不融合其 twist，避免与轮速/IMU 的短时速度约束重复拉扯。
-    odom1: /odom_fastlio_relative
+    odom1: /rslidar_imu_data_rotated
     odom1_config: [true,  true,  false,
                    false, false, true,
                    false, false, false,

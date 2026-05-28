@@ -12,7 +12,7 @@ import yaml
 
 
 # 默认启动参数
-DEFAULT_CONFIG_FILE = "mid360.yaml"
+DEFAULT_CONFIG_FILE = "e1r.yaml"
 DEFAULT_USE_SIM_TIME = "false"
 DEFAULT_RVIZ = "true"
 DEFAULT_PUBLISH_PCD_MAP = "true"
@@ -26,7 +26,7 @@ def launch_setup(context, *args, **kwargs):
     # 主参数文件占位符，作为整个 localization launch 的统一配置入口
     config_file = LaunchConfiguration("config_file").perform(context)
     localization_config = os.path.join(package_path, "config", config_file)
-    map_file_path = os.path.join("/home/medical/maps", "test.pcd")
+    map_file_path = os.path.join("/home/medical/maps", "map_0528.pcd")
 
     try:
         with open(localization_config, "r", encoding="utf-8") as file:

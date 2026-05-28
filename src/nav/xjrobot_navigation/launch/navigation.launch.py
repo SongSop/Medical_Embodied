@@ -8,7 +8,7 @@ from launch_ros.substitutions import FindPackageShare
 
 
 # 默认加载地图名（对应 maps/<MAP_NAME>.yaml）
-MAP_NAME = "scans"
+MAP_NAME = "none"
 
 
 def generate_launch_description():

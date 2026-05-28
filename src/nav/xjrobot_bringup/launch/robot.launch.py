@@ -9,15 +9,15 @@ from launch_ros.substitutions import FindPackageShare
 # 实机默认地图：
 # - DEFAULT_MAP_PATH：Nav2 使用的 2D 栅格地图 yaml
 # - DEFAULT_PCD_MAP_PATH：FastLIO / 全局重定位使用的 3D PCD 地图
-DEFAULT_MAP_PATH = "/home/medical/maps/0423.yaml"
-DEFAULT_PCD_MAP_PATH = "/home/medical/maps/0423.pcd"
+DEFAULT_MAP_PATH = "/home/medical/maps/map_0528.yaml"
+DEFAULT_PCD_MAP_PATH = "/home/medical/maps/map_0528.pcd"
 
 
 def generate_launch_description():
     # 本包只做系统级装配，不直接启动业务节点。
     # 各子系统的具体节点和参数仍由自己的 launch / config 维护，避免职责混杂。
     base_launch = PathJoinSubstitution(
-        [FindPackageShare("xjrobot_base"), "launch", "base.launch.py"]
+        [FindPackageShare("xjrobot_base"), "launch", "base_core.launch.py"]
     )
     localization_launch = PathJoinSubstitution(
         [FindPackageShare("xjrobot_localization"), "launch", "localization.launch.py"]
@@ -39,7 +39,7 @@ def generate_launch_description():
     controller = LaunchConfiguration("controller")
 
     # 底盘与传感器链路：
-    # CAN 底盘、手柄、Livox、点云地面分割、robot_state_publisher、EKF 都由 base.launch.py 维护。
+    # CAN 底盘、手柄、E1R、点云地面分割、robot_state_publisher、EKF 都由 base.launch.py 维护。
     base_include = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(base_launch),
         condition=IfCondition(LaunchConfiguration("launch_base")),
@@ -48,7 +48,6 @@ def generate_launch_description():
             "publish_joints": LaunchConfiguration("publish_joints"),
             "launch_joy": LaunchConfiguration("launch_joy"),
             "joy_dev": LaunchConfiguration("joy_dev"),
-            "launch_livox": LaunchConfiguration("launch_livox"),
             "launch_ground_segmentation": LaunchConfiguration("launch_ground_segmentation"),
         }.items(),
     )
@@ -143,7 +142,7 @@ def generate_launch_description():
             # localization_config 仍作为定位参数总入口；pcd_map 只覆盖其中的地图路径。
             DeclareLaunchArgument(
                 "localization_config",
-                default_value="mid360.yaml",
+                default_value="e1r.yaml",
                 description="xjrobot_localization config file name under its config directory.",
             ),
             DeclareLaunchArgument(
@@ -200,11 +199,6 @@ def generate_launch_description():
                 "joy_dev",
                 default_value="/dev/input/js0",
                 description="Joystick device path.",
-            ),
-            DeclareLaunchArgument(
-                "launch_livox",
-                default_value="true",
-                description="Launch Livox MID360 driver from base.launch.py.",
             ),
             DeclareLaunchArgument(
                 "launch_ground_segmentation",
