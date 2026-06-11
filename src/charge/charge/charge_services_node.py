@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import time
 from threading import Event
 
 import rclpy
@@ -13,8 +14,12 @@ class ChargeServicesNode(Node):
     def __init__(self) -> None:
         super().__init__("charge_services")
         self.state_timeout_sec = float(self.declare_parameter("state_timeout_sec", 5.0).value)
+        self.docking_session_cooldown_sec = float(
+            self.declare_parameter("docking_session_cooldown_sec", 5.0).value
+        )
         self.last_docking_state = "UNKNOWN"
         self.state_event = Event()
+        self.last_docking_end_monotonic = None
 
         self.control_pub = self.create_publisher(String, "/dock/control_cmd", 10)
         self.create_subscription(String, "/docking/state", self._state_callback, 10)
@@ -36,6 +41,22 @@ class ChargeServicesNode(Node):
         self.last_docking_state = "UNKNOWN"
         self.state_event.clear()
 
+    def _record_docking_cooldown(self) -> None:
+        self.last_docking_end_monotonic = time.monotonic()
+
+    def _wait_for_docking_cooldown(self) -> None:
+        if self.last_docking_end_monotonic is None:
+            return
+        remaining = self.docking_session_cooldown_sec - (
+            time.monotonic() - self.last_docking_end_monotonic
+        )
+        if remaining <= 0.0:
+            return
+        self.get_logger().info(
+            "Docking cooldown: waiting %.1fs before next start" % remaining
+        )
+        time.sleep(remaining)
+
     def _wait_for_state(self, accepted_states: set[str], timeout_sec: float) -> bool:
         self.state_event.clear()
         deadline = self.get_clock().now().nanoseconds + int(timeout_sec * 1e9)
@@ -52,6 +73,7 @@ class ChargeServicesNode(Node):
         self.get_logger().info(f"dock requested start={str(start).lower()}")
 
         if start:
+            self._wait_for_docking_cooldown()
             self._prepare_new_docking_session()
             self._publish_control("start")
             accepted = self._wait_for_state(
@@ -61,8 +83,11 @@ class ChargeServicesNode(Node):
             response.ok = accepted
             if not accepted:
                 self.get_logger().error("Dock start rejected or timed out waiting for state transition")
+                self._publish_control("stop")
+                self._record_docking_cooldown()
         else:
             self._publish_control("stop")
+            self._record_docking_cooldown()
             # Stop command is idempotent: return success even if controller is already idle.
             response.ok = True
         return response

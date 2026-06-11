@@ -6,6 +6,13 @@ xjrobot_bridge_node:
     nav2_server_wait_timeout_sec: 5.0
     nav2_request_timeout_sec: 5.0
 
+    # 回桩配置：DOCK(nav_type=2) 先 Nav2 导航到 dock_staging_index，再启动 charge 精对接。
+    dock_staging_index: 100
+    dock_action_name: dock
+    # 需大于 charge_services.docking_completion_timeout_sec
+    dock_action_wait_timeout_sec: 130.0
+    dock_coarse_progress_ratio: 0.5
+
     # 点位配置说明：
     # 1. waypoint_ids 用来声明“哪些点位条目需要被加载”
     # 2. 每个条目都放在 waypoints.<id> 下，<id> 可以使用 patrol_0 / bed_1 等业务化命名
@@ -14,6 +21,7 @@ xjrobot_bridge_node:
     # 5. 如果某个点配置保留在 waypoints 里，但没有写进 waypoint_ids，
     #    那么桥接节点启动时不会加载它
     waypoint_ids:
+      - dock_staging
       - patrol_0
       - patrol_1
       - bed_1
@@ -30,6 +38,15 @@ xjrobot_bridge_node:
       - bed_12
 
     waypoints:
+      # 充电桩前候位点：请根据实机标定 x/y/yaw，机器人应能在此位置看到 AprilTag。
+      dock_staging:
+        index: 100
+        name: charge_staging
+        frame_id: map
+        x: -4.26
+        y: -0.85
+        yaw: 0.54
+
       patrol_0:
         index: 0
         name: corridor_left_mid

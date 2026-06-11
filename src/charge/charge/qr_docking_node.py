@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
 import math
+import time
 
 import rclpy
 from geometry_msgs.msg import Twist, Vector3Stamped
 from rclpy.duration import Duration
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
 from std_msgs.msg import String
 from tf2_ros import Buffer, TransformException, TransformListener
@@ -38,6 +40,7 @@ class QrDockingNode(Node):
         self.current_distance_error = float("nan")
         self.current_lateral_error = float("nan")
         self.current_angular_error = float("nan")
+        self.last_docking_end_monotonic = None
 
         self.target_distance = self._declare_float("target_distance", 0.315)
         self.horizontal_tolerance = self._declare_float("horizontal_tolerance", 0.03)
@@ -101,9 +104,18 @@ class QrDockingNode(Node):
         self.control_period = self._declare_float("control_period", 0.1)
         self.error_topic = self._declare_str("error_topic", "/docking/current_error")
         self.error_publish_hz = self._declare_float("error_publish_hz", 20.0)
+        self.docking_restart_cooldown_sec = self._declare_float("docking_restart_cooldown_sec", 5.0)
+        self.state_publish_hz = self._declare_float("state_publish_hz", 2.0)
+        self.terminal_state_hold_sec = self._declare_float("terminal_state_hold_sec", 3.0)
+        self._terminal_state_until_monotonic = None
 
+        state_qos = QoSProfile(
+            depth=1,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=ReliabilityPolicy.RELIABLE,
+        )
         self.cmd_vel_pub = self.create_publisher(Twist, "cmd_vel_safe", 10)
-        self.state_pub = self.create_publisher(String, "/docking/state", 10)
+        self.state_pub = self.create_publisher(String, "/docking/state", state_qos)
         self.error_pub = self.create_publisher(Vector3Stamped, self.error_topic, 10)
         self.create_subscription(String, "/dock/control_cmd", self.control_callback, 10)
 
@@ -111,6 +123,7 @@ class QrDockingNode(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.create_timer(self.control_period, self.control_loop)
         self.create_timer(1.0 / max(self.error_publish_hz, 1.0), self.publish_current_error_timer)
+        self.create_timer(1.0 / max(self.state_publish_hz, 0.5), self.publish_state_timer)
 
         self.get_logger().info(
             f"qr_docking_node started, tracking tf {self.base_frame} -> {self.tag_frame}, "
@@ -129,9 +142,23 @@ class QrDockingNode(Node):
         self.declare_parameter(name, default)
         return int(self.get_parameter(name).value)
 
+    def _wait_for_restart_cooldown(self) -> None:
+        if self.last_docking_end_monotonic is None:
+            return
+        remaining = self.docking_restart_cooldown_sec - (
+            time.monotonic() - self.last_docking_end_monotonic
+        )
+        if remaining <= 0.0:
+            return
+        self.get_logger().info(
+            "Docking restart cooldown: waiting %.1fs before start" % remaining
+        )
+        time.sleep(remaining)
+
     def control_callback(self, msg: String) -> None:
         command = msg.data.strip().lower()
         if command == "start":
+            self._wait_for_restart_cooldown()
             if self.is_running:
                 self.get_logger().warn("Docking is running, restarting docking flow")
             self.start_docking()
@@ -141,10 +168,31 @@ class QrDockingNode(Node):
             self.get_logger().info("Docking stopped")
         self.publish_state()
 
+    def _is_terminal_state(self, state: str) -> bool:
+        return state in {self.COMPLETED, self.FAILED, self.ABORTED}
+
+    def _mark_terminal_state(self, state: str) -> None:
+        if self._is_terminal_state(state):
+            self._terminal_state_until_monotonic = (
+                time.monotonic() + max(self.terminal_state_hold_sec, 0.0)
+            )
+
     def publish_state(self) -> None:
         state_msg = String()
         state_msg.data = self.current_state
         self.state_pub.publish(state_msg)
+
+    def publish_state_timer(self) -> None:
+        now = time.monotonic()
+        if (
+            self._terminal_state_until_monotonic is not None
+            and now >= self._terminal_state_until_monotonic
+            and self._is_terminal_state(self.current_state)
+            and not self.is_docking
+        ):
+            self._terminal_state_until_monotonic = None
+            self.current_state = self.IDLE
+        self.publish_state()
 
     def publish_current_error(
         self, distance_error: float, lateral_error: float, angular_error: float
@@ -186,6 +234,7 @@ class QrDockingNode(Node):
             return None
 
     def start_docking(self) -> None:
+        self._terminal_state_until_monotonic = None
         self.is_running = True
         self.is_docking = True
         self.is_retreating = False
@@ -211,7 +260,9 @@ class QrDockingNode(Node):
         self.is_docking = False
         self.is_retreating = False
         self.current_state = state
+        self._mark_terminal_state(state)
         self.stall_retry_counter = 0
+        self.last_docking_end_monotonic = time.monotonic()
         self.publish_current_error(float("nan"), float("nan"), float("nan"))
         self.send_stop_command()
         self.publish_state()

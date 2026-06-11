@@ -1,0 +1,8 @@
+# goal
+bool start
+---
+bool ok
+string message
+---
+string docking_state
+float32 progress

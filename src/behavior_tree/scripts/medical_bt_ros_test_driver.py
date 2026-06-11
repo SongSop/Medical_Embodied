@@ -52,10 +52,10 @@ class MedicalBtRosTestDriver(Node):
         # self.create_service(FaceIdentify, '/face_identify', self.handle_face_identify)
         self.create_service(SetConfig, '/loadconfig/set_config', self.handle_set_config)
 
-        self.nav_server = ActionServer(
-            self, Navigate, 'navigate',
-            execute_callback=self.handle_navigate
-        )
+        # self.nav_server = ActionServer(
+        #     self, Navigate, 'navigate',
+        #     execute_callback=self.handle_navigate
+        # )
         
         # self.llm_server = ActionServer(
         #     self, LLMInteraction, 'llm_interaction',

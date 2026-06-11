@@ -13,8 +13,9 @@ def generate_launch_description():
     detections_topic_arg = DeclareLaunchArgument(
         "detections_topic", default_value="/apriltag_detections"
     )
-    params_file_arg = DeclareLaunchArgument(
-        "params_file",
+    # Use a dedicated arg name so parent launches (docking_params.yaml) are not inherited.
+    apriltag_params_file_arg = DeclareLaunchArgument(
+        "apriltag_params_file",
         default_value=os.path.join(
             get_package_share_directory("charge"), "cfg", "tags_36h11_node.yaml"
         ),
@@ -29,7 +30,7 @@ def generate_launch_description():
         name="apriltag",
         namespace="apriltag",
         output="screen",
-        parameters=[LaunchConfiguration("params_file")],
+        parameters=[LaunchConfiguration("apriltag_params_file")],
         remappings=[
             ("image", image_topic),
             ("camera_info", info_topic),
@@ -38,5 +39,11 @@ def generate_launch_description():
     )
 
     return LaunchDescription(
-        [image_topic_arg, camera_name_arg, detections_topic_arg, params_file_arg, apriltag_node]
+        [
+            image_topic_arg,
+            camera_name_arg,
+            detections_topic_arg,
+            apriltag_params_file_arg,
+            apriltag_node,
+        ]
     )

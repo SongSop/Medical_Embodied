@@ -58,7 +58,7 @@ def generate_launch_description():
         description="Delay between apriltag startup retries",
     )
     camera_frame_arg = DeclareLaunchArgument("camera_frame", default_value="camera")
-    base_frame_arg = DeclareLaunchArgument("base_frame", default_value="base_link")
+    base_frame_arg = DeclareLaunchArgument("base_frame", default_value="base_link1")
     tag_frame_arg = DeclareLaunchArgument("tag_frame", default_value="dock_frame")
     camera_x_arg = DeclareLaunchArgument("camera_x", default_value="-0.30")
     camera_y_arg = DeclareLaunchArgument("camera_y", default_value="0.0")

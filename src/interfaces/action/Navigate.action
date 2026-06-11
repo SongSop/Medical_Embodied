@@ -6,3 +6,4 @@ interfaces/ActionStatus status
 string message
 ---
 float32 progress
+string docking_state

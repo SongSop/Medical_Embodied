@@ -15,6 +15,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/FaceIdentify.srv"
   "srv/SetConfig.srv"
   "action/Navigate.action"
+  "action/Docking.action"
   "action/LLMInteraction.action"
   "action/CallNurse.action"
   DEPENDENCIES std_msgs

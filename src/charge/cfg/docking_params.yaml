@@ -93,8 +93,20 @@ qr_docking_node:
     error_topic: "/docking/current_error"
     # 偏差发布频率（Hz）
     error_publish_hz: 20.0
+    # 结束对接后再次开始的最短间隔（秒），与 charge_services 保持一致
+    docking_restart_cooldown_sec: 5.0
+    # 对接状态发布频率（Hz），供上层 action 反馈订阅
+    state_publish_hz: 2.0
+    # 终态（DOCKING_COMPLETED 等）保持时长（秒），避免上层错过单次发布
+    terminal_state_hold_sec: 3.0
 
 charge_services:
   ros__parameters:
+    # dock action / service 名称
+    dock_action_name: dock
     # 充电状态查询超时（秒）
     state_timeout_sec: 5.0
+    # dock(start=true) 阻塞等待 DOCKING_COMPLETED 的最长时间（秒）
+    docking_completion_timeout_sec: 120.0
+    # 两次对接之间的最短间隔（秒）：结束对接后需等待该时间才能再次开始，避免节点未完全退出
+    docking_session_cooldown_sec: 5.0

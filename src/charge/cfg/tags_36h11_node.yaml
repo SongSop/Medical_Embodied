@@ -6,7 +6,7 @@
     threads: 4
     max_hamming: 0
     z_up: true
-    decimate: 0.0
+    decimate: 1.0
     blur: 1.0
     refine-edges: 1
     debug: 0

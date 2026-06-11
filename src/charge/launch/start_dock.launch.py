@@ -16,6 +16,9 @@ def generate_launch_description():
     apriltag_launch_file = os.path.join(
         get_package_share_directory("charge"), "launch", "tag_realsense_node.launch.py"
     )
+    default_apriltag_params = os.path.join(
+        get_package_share_directory("charge"), "cfg", "tags_36h11_node.yaml"
+    )
 
     params_arg = DeclareLaunchArgument(
         "params_file",
@@ -87,6 +90,11 @@ def generate_launch_description():
         default_value="0.8",
         description="Delay between apriltag startup retries",
     )
+    docking_session_cooldown_sec_arg = DeclareLaunchArgument(
+        "docking_session_cooldown_sec",
+        default_value="5.0",
+        description="Minimum seconds between docking stop and next start",
+    )
     camera_x_arg = DeclareLaunchArgument("camera_x", default_value="-0.30")
     camera_y_arg = DeclareLaunchArgument("camera_y", default_value="-0.0")
     camera_z_arg = DeclareLaunchArgument("camera_z", default_value="-0.0")
@@ -110,6 +118,7 @@ def generate_launch_description():
             apriltag_stop_timeout_sec_arg,
             apriltag_start_retry_count_arg,
             apriltag_start_retry_delay_sec_arg,
+            docking_session_cooldown_sec_arg,
             camera_x_arg,
             camera_y_arg,
             camera_z_arg,
@@ -122,6 +131,7 @@ def generate_launch_description():
                 launch_arguments={
                     "camera_name": LaunchConfiguration("camera_name"),
                     "image_topic": LaunchConfiguration("image_topic"),
+                    "apriltag_params_file": default_apriltag_params,
                 }.items(),
             ),
             Node(
@@ -158,17 +168,22 @@ def generate_launch_description():
                 name="charge_services",
                 output="screen",
                 parameters=[
+                    LaunchConfiguration("params_file"),
                     {
                         "enable_apriltag_on_demand": LaunchConfiguration("enable_apriltag_on_demand"),
                         "apriltag_launch_package": LaunchConfiguration("apriltag_launch_package"),
                         "apriltag_launch_file": LaunchConfiguration("apriltag_launch_file"),
                         "apriltag_camera_name": LaunchConfiguration("camera_name"),
                         "apriltag_image_topic": LaunchConfiguration("image_topic"),
+                        "apriltag_params_file": default_apriltag_params,
                         "apriltag_startup_delay_sec": LaunchConfiguration("apriltag_startup_delay_sec"),
                         "apriltag_stop_timeout_sec": LaunchConfiguration("apriltag_stop_timeout_sec"),
                         "apriltag_start_retry_count": LaunchConfiguration("apriltag_start_retry_count"),
                         "apriltag_start_retry_delay_sec": LaunchConfiguration(
                             "apriltag_start_retry_delay_sec"
+                        ),
+                        "docking_session_cooldown_sec": LaunchConfiguration(
+                            "docking_session_cooldown_sec"
                         ),
                     }
                 ],

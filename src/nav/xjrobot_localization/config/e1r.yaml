@@ -7,13 +7,13 @@ laser_mapping:
         filter_size_map: 0.2
         cube_side_length: 1000.0
         runtime_pos_log_enable: false
-        map_file_path: "/home/medical/maps/map_0528.pcd"
+        map_file_path: "/home/medical/maps/map_0610.pcd"
 
         common:
             lid_topic:  "/rslidar_points_fastlio"
-            imu_topic:  "/rslidar_imu_data_rotated"
+            imu_topic:  "/imu/link1"
             time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
-            time_offset_lidar_to_imu: 0.0 # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
+            time_offset_lidar_to_imu: -0.010642 # Time offset between lidar and IMU calibrated by other algorithms, e.g. LI-Init (can be found in README).
                                         # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
 
         frames:
@@ -37,7 +37,7 @@ laser_mapping:
             fov_degree:    120.0
             det_range:     200.0
             extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic
-            extrinsic_T: [ 0.004278, -0.015764, -0.011221 ]
+            extrinsic_T: [ 0.04500, -0.028500,-0.061000 ]
             extrinsic_R: [ 1.0, 0.0, 0.0,
                             0.0, 1.0, 0.0,
                             0.0, 0.0, 1.0 ]
