@@ -1,22 +1,24 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
-from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
 from launch.conditions import IfCondition
-import ament_index_python.packages
+
 
 def generate_launch_description():
-    """启动床位检测节点和模拟相机节点"""
-    
-    package_path = ament_index_python.packages.get_package_share_directory('monitor')
-    
+    """启动床位检测服务节点（相机节点需独立启动）"""
+
     return LaunchDescription([
-        # 启动参数
+        # ==================== 启动参数 ====================
         DeclareLaunchArgument(
             'use_mock_camera',
-            default_value='true',
-            description='是否使用模拟相机'
+            default_value='false',
+            description='是否使用模拟相机（无真机时用于测试）'
+        ),
+        DeclareLaunchArgument(
+            'camera_topic',
+            default_value='/camera/camera/color/image_raw',
+            description='RGB图像话题名（RealSense默认: /camera/camera/color/image_raw，模拟相机: /camera/rgb/image_raw）'
         ),
         DeclareLaunchArgument(
             'yolo_model_path',
@@ -33,20 +35,23 @@ def generate_launch_description():
             default_value='10',
             description='最大床位数'
         ),
-        
-        # 模拟相机节点
+        DeclareLaunchArgument(
+            'yolo_conf_threshold',
+            default_value='0.5',
+            description='YOLO检测置信度阈值（低于此值的检测结果被过滤）'
+        ),
+
+        # ==================== 模拟相机节点（仅测试用） ====================
         Node(
             package='monitor',
             executable='mock_camera',
             name='mock_camera_node',
             output='screen',
             emulate_tty=True,
-            condition=IfCondition(
-                LaunchConfiguration('use_mock_camera')
-            )
+            condition=IfCondition(LaunchConfiguration('use_mock_camera'))
         ),
-        
-        # 床位检测服务节点
+
+        # ==================== 床位检测服务节点 ====================
         Node(
             package='monitor',
             executable='bed_detection_server',
@@ -56,8 +61,9 @@ def generate_launch_description():
                 'yolo_model_path': LaunchConfiguration('yolo_model_path'),
                 'clip_model_path': LaunchConfiguration('clip_model_path'),
                 'max_beds': LaunchConfiguration('max_beds'),
+                'camera_topic': LaunchConfiguration('camera_topic'),
+                'yolo_conf_threshold': LaunchConfiguration('yolo_conf_threshold'),
             }],
             emulate_tty=True
         ),
-
     ])

@@ -3,11 +3,12 @@
 床位检测节点 - Area/Bed模式实现
 整合版本: 用于Medical_Embodied项目的monitor包
 
-功能: 
+功能:
   Area模式: 扫描指定区域,返回有人的床位ID列表
   Bed模式:  检测指定床位是否有人(异常),返回is_anomaly
 
 服务接口: /detect_anomaly (继承自interfaces/DetectAnomaly.srv)
+相机话题: 通过camera_topic参数配置 (默认RealSense D455: /camera/camera/color/image_raw)
 """
 import os
 import json
@@ -39,15 +40,21 @@ class BedDetectionNode(Node):
         # 创建CV桥
         self.bridge = CvBridge()
 
-        # 声明参数用于配置模型路径
+        # 声明参数用于配置模型路径和相机话题
         self.declare_parameter('yolo_model_path', '')
         self.declare_parameter('clip_model_path', '')
         self.declare_parameter('max_beds', 10)
+        self.declare_parameter('camera_topic', '/camera/camera/color/image_raw')
+        self.declare_parameter('yolo_conf_threshold', 0.5)
+        self.declare_parameter('publish_debug_image', True)
 
         # 获取参数值
         yolo_model_param = self.get_parameter('yolo_model_path').value
         clip_model_param = self.get_parameter('clip_model_path').value
         self.max_beds = self.get_parameter('max_beds').value
+        self.camera_topic = self.get_parameter('camera_topic').value
+        self.yolo_conf_threshold = self.get_parameter('yolo_conf_threshold').value
+        self.publish_debug_image = self.get_parameter('publish_debug_image').value
 
         # 解析资源目录（优先ROS安装share目录，回退源码目录）
         current_file_dir = os.path.dirname(os.path.abspath(__file__))
@@ -165,17 +172,20 @@ class BedDetectionNode(Node):
         self.current_image = None
         self.image_received = False
 
-        # 订阅相机话题
+        # 订阅相机话题（通过参数配置，默认使用RealSense D455彩色图像话题）
         self.image_sub = self.create_subscription(
             Image,
-            '/camera/rgb/image_raw',
+            self.camera_topic,
             self.image_callback,
             10
         )
-        self.get_logger().info('已订阅相机话题: /camera/rgb/image_raw')
+        self.get_logger().info(f'已订阅相机话题: {self.camera_topic}')
 
-        # 发布模式切换指令到模拟相机
+        # 发布模式切换指令到模拟相机（真实相机下无人监听，无害）
         self.mode_pub = self.create_publisher(String, '/camera/mode', 10)
+
+        # 调试用：发布带检测框标注的图像
+        self.debug_image_pub = self.create_publisher(Image, '/bed_detection/debug_image', 10)
 
         # 创建床位检测服务 - 使用与anomaly_detect_server相同的服务名称
         self.detect_service = self.create_service(
@@ -233,18 +243,6 @@ class BedDetectionNode(Node):
         # 无映射时按顺序编号 (index 0 -> bed_id 1)
         return detection_index + 1
 
-    def _get_detection_index_for_bed(self, bed_id):
-        """根据导航床位编号反查YOLO检测框索引，遍历所有巡诊点映射"""
-        for pid, bed_map in self.patrol_bed_map.items():
-            for det_idx, bid in bed_map.items():
-                if bid == bed_id:
-                    self.get_logger().info(
-                        f'床位 {bed_id} 在巡诊点 {pid} 映射中, 检测索引 {det_idx}'
-                    )
-                    return det_idx
-        # 无映射时 bed_id-1 即索引
-        return bed_id - 1
-
     def image_callback(self, msg):
         """接收相机图像"""
         try:
@@ -255,7 +253,7 @@ class BedDetectionNode(Node):
 
     def detect_beds_with_yolo(self, image):
         """
-        使用YOLOv8检测图像中的床位
+        使用YOLOv8检测图像中的床位，低于置信度阈值的检测结果被过滤
 
         Returns:
             List[dict]: [{'bbox': [x1,y1,x2,y2], 'class_id': 0, 'confidence': 0.95}, ...]
@@ -263,18 +261,30 @@ class BedDetectionNode(Node):
         results = self.yolo_model(image, verbose=False)
 
         detections = []
+        filtered_count = 0
         for result in results:
             boxes = result.boxes
+            if boxes is None:
+                continue
             for box in boxes:
                 x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
                 class_id = int(box.cls[0].cpu().numpy())
                 confidence = float(box.conf[0].cpu().numpy())
+
+                if confidence < self.yolo_conf_threshold:
+                    filtered_count += 1
+                    continue
 
                 detections.append({
                     'bbox': [int(x1), int(y1), int(x2), int(y2)],
                     'class_id': class_id,
                     'confidence': confidence
                 })
+
+        if filtered_count > 0:
+            self.get_logger().info(
+                f'YOLO过滤 {filtered_count} 个低置信度检测 (阈值: {self.yolo_conf_threshold})'
+            )
 
         return detections
 
@@ -393,8 +403,17 @@ class BedDetectionNode(Node):
             response.urgencies = []
             return response
 
-        num_detected = len(bed_detections)
-        self.get_logger().info(f'检测到 {num_detected} 个床位')
+        # 按置信度降序排序，只取前N个（N=该巡诊点映射的床位数），丢弃低置信度误检
+        bed_detections.sort(key=lambda d: d['confidence'], reverse=True)
+        max_expected = len(self.patrol_bed_map.get(patrol_id, {}))
+        if max_expected > 0:
+            bed_detections = bed_detections[:max_expected]
+
+        if len(bed_detections) < max_expected:
+            self.get_logger().info(
+                f'检测到 {len(bed_detections)} 个床位 (期望 {max_expected} 个)'
+            )
+        self.get_logger().info(f'处理 {len(bed_detections)} 个床位')
 
         occupied_beds = []
         urgencies = []
@@ -439,81 +458,66 @@ class BedDetectionNode(Node):
             f'Area模式检测完成: {len(occupied_beds)} 个有人床位 -> {occupied_beds}'
         )
 
+        # 发布调试图像（带检测框标注）
+        if self.publish_debug_image:
+            self._publish_debug_image(self.current_image, bed_detections, occupied_beds, patrol_id)
+
         return response
+
+    def _publish_debug_image(self, image, detections, occupied_beds, patrol_id):
+        """绘制YOLO检测框和床位标签，发布到调试话题"""
+        debug_img = image.copy()
+        for i, detection in enumerate(detections):
+            x1, y1, x2, y2 = detection['bbox']
+            conf = detection['confidence']
+            bed_id = self._get_bed_id(patrol_id, i)
+
+            # 有人/无人 用不同颜色
+            if bed_id in occupied_beds:
+                color = (0, 255, 0)    # 绿色：有人
+                label = f"Bed {bed_id} (OCCUPIED) {conf:.2f}"
+            else:
+                color = (0, 0, 255)    # 红色：无人
+                label = f"Bed {bed_id} (empty) {conf:.2f}"
+
+            cv2.rectangle(debug_img, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(debug_img, label, (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+        try:
+            debug_msg = self.bridge.cv2_to_imgmsg(debug_img, encoding='bgr8')
+            self.debug_image_pub.publish(debug_msg)
+        except Exception as e:
+            self.get_logger().warn(f'发布调试图像失败: {e}')
 
     def _handle_bed_mode(self, request, response):
         """
         Bed模式处理逻辑
-        检测指定床位是否有人(异常),返回is_anomaly
-        
+        机器人已停在目标床位前，直接用CLIP判断整张图像中病人是否在床上
+
         Args:
-            request.area_bed_id: 目标床位ID (来自映射表)
+            request.area_bed_id: 目标床位ID
         """
         self._switch_camera_mode('bed')
         target_bed_id = request.area_bed_id
         self.get_logger().info(f'开始Bed模式检测, 目标床位ID: {target_bed_id}')
 
-        # 使用YOLOv8检测所有床位
-        bed_detections = self.detect_beds_with_yolo(self.current_image)
+        # 直接对整个图像使用CLIP判断是否有人（坠床检测模型训练完成后替换为 detect_fall_risk_with_clip）
+        is_person, person_score = self.detect_person_with_clip(self.current_image)
 
-        if not bed_detections:
-            self.get_logger().warn('未检测到任何床位')
-            response.is_anomaly = False
-            response.details = "No beds detected"
-            response.bed_ids = []
-            response.urgencies = []
-            return response
-
-        num_detected = len(bed_detections)
-        self.get_logger().info(f'检测到 {num_detected} 个床位')
-
-        # 通过映射表将床位ID反查为检测索引
-        det_idx = self._get_detection_index_for_bed(target_bed_id)
-
-        if det_idx < 0 or det_idx >= num_detected:
-            self.get_logger().warn(
-                f'目标床位ID {target_bed_id} 对应检测索引 {det_idx} 超出范围 (0-{num_detected - 1})'
-            )
-            response.is_anomaly = False
-            response.details = f"Bed ID {target_bed_id} (index {det_idx}) out of range"
-            response.bed_ids = []
-            response.urgencies = []
-            return response
-
-        # 获取目标床位的检测结果
-        detection = bed_detections[det_idx]
-        bbox = detection['bbox']
-        yolo_confidence = detection['confidence']
-
-        # 裁剪目标床位区域
-        x1, y1, x2, y2 = bbox
-        bed_image = self.current_image[y1:y2, x1:x2]
-
-        if bed_image.size == 0:
-            self.get_logger().warn(f'床位 {target_bed_id} 裁剪区域为空')
-            response.is_anomaly = False
-            response.details = f"Bed {target_bed_id} crop region is empty"
-            response.bed_ids = []
-            response.urgencies = []
-            return response
-
-        # 使用CLIP判断是否有坠床风险
-        is_risk, risk_score = self.detect_fall_risk_with_clip(bed_image)
-
-        # Bed模式: 有坠床风险即为异常
-        is_anomaly = is_risk
-        response.is_anomaly = is_anomaly
+        # 有人在床上即为异常
+        response.is_anomaly = is_person
         response.details = (
-            f"Bed {target_bed_id}: {'fall risk detected' if is_anomaly else 'patient safe'}, "
-            f"CLIP confidence: {risk_score:.3f}, YOLO confidence: {yolo_confidence:.3f}"
+            f"Bed {target_bed_id}: {'person detected' if is_person else 'bed empty'}, "
+            f"CLIP confidence: {person_score:.3f}"
         )
-        response.bed_ids = [target_bed_id] if is_anomaly else []
-        response.urgencies = [1 if risk_score > 0.7 else 0] if is_anomaly else []
+        response.bed_ids = [target_bed_id] if is_person else []
+        response.urgencies = [1 if person_score > 0.7 else 0] if is_person else []
 
         self.get_logger().info(
             f'Bed模式检测完成: 床位 {target_bed_id} '
-            f'{"有坠床风险(异常)" if is_anomaly else "病人安全(正常)"}, '
-            f'CLIP置信度: {risk_score:.3f}'
+            f'{"有人(异常)" if is_person else "无人(正常)"}, '
+            f'CLIP置信度: {person_score:.3f}'
         )
 
         return response
