@@ -13,6 +13,7 @@
 #include "std_msgs/msg/bool.hpp"
 #include "llm_node_comm/msg/dialog_session_finished.hpp"
 #include "llm_node_comm/srv/tts_oneshot.hpp"
+#include "llm_node_comm/srv/end_session.hpp"
 #include "llm_node_comm/srv/nurse_alert.hpp"
 
 #include "llm_node_cpp/conf.h"
@@ -140,6 +141,7 @@ namespace {
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr req_pub, req_ui_pub, video_pub;
     rclcpp::Publisher<llm_node_comm::msg::DialogSessionFinished>::SharedPtr dialog_session_finished_pub;
     rclcpp::Client<llm_node_comm::srv::TtsOneshot>::SharedPtr client;
+    rclcpp::Client<llm_node_comm::srv::EndSession>::SharedPtr end_session_client;
     rclcpp::Client<llm_node_comm::srv::NurseAlert>::SharedPtr nurse_call_client;
 
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr kws_pub;  // 发布检测到 kws 的信号
@@ -164,6 +166,9 @@ namespace {
 
     // 接收 start asr 信号,开始进行语音识别
     void start_asr_callback(const std_msgs::msg::Bool::SharedPtr msg) {
+        // 开启 asr timer 计时器
+        asr_timer->reset();
+
         std::thread([=]() {
             (void)msg;
 
@@ -205,7 +210,7 @@ namespace {
         );
 
         // 说句客套话表示已经结束对话了（阻塞）
-        call_oneshot_tts("没有其他事情的话，小医先走了，有问题记得叫小医。", true);
+        // call_oneshot_tts("没有其他事情的话，小医先走了，有问题记得叫小医。", true);
     }
 
     
@@ -365,6 +370,33 @@ namespace {
             err_log("call /check_need_call_nurse timeout.");
         }
 
+        // 判断用户是否想结束对话
+        auto end_request = std::make_shared<llm_node_comm::srv::EndSession::Request>();
+        end_request->question = res;
+        auto end_future = end_session_client->async_send_request(end_request);
+        if (end_future.wait_for(std::chrono::seconds(30)) == std::future_status::ready) {
+            const auto end_response = end_future.get();
+            bool need_end = end_response->need_end;
+            std::string reason = end_response->comment;
+            std::string response_text = end_response->response;
+
+            if (need_end) {
+                sys_log("用户想要结束对话.");
+
+                dialog_session_finished(
+                    false, reason
+                );
+
+                return AsrStream::asrContinue;
+            }
+
+            RCLCPP_INFO(node->get_logger(), "need_end: %s", need_end ? "true" : "false");
+            RCLCPP_INFO(node->get_logger(), "reason: %s", reason.c_str());
+            RCLCPP_INFO(node->get_logger(), "response: %s", response_text.c_str());
+        } else {
+            err_log("call /check_end_dialog timeout.");
+        }
+
         // 先发送一些套话
         call_oneshot_tts("我听到了。", false);
 
@@ -415,8 +447,8 @@ int main(int argc, char ** argv)
     rclcpp::init(argc, argv);
     node = rclcpp::Node::make_shared("ros_node_keyword_asr");
 
-    // asr 定期检查，如果 25 秒 没有应答就走开
-    asr_timer = node->create_wall_timer(std::chrono::seconds(20), asr_timerCallback);
+    // asr 定期检查，如果 15 秒 没有应答就走开
+    asr_timer = node->create_wall_timer(std::chrono::seconds(15), asr_timerCallback);
     asr_timer->cancel();
 
     // 向 question manager 发布语音识别到的问题
@@ -450,6 +482,9 @@ int main(int argc, char ** argv)
 
     // 一次性合成的 tts 语音信息
     client = node->create_client<llm_node_comm::srv::TtsOneshot>("/tts_one_shot");
+
+    // 检查用户是否想要结束对话
+    end_session_client = node->create_client<llm_node_comm::srv::EndSession>("/check_end_dialog");
 
     // 向 ui 节点发送信息
     req_ui_pub = node->create_publisher<std_msgs::msg::String>("send_question_to_ui", 10);

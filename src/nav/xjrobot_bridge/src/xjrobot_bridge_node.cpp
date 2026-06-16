@@ -232,15 +232,13 @@ void XjrobotBridgeNode::execute_goal_navigation(
 
 void XjrobotBridgeNode::execute_stop_navigation(const std::shared_ptr<NavigateGoalHandle> goal_handle)
 {
-  // STOP 不需要解析点位，也不会下发新目标，只负责取消当前 Nav2 目标。
+  // STOP：取消 Nav2 / 精对接，并尽快以 OK 返回，便于行为树 CallInteraction 继续后续节点。
+  stop_fine_docking();
   const bool canceled = cancel_active_nav2_goal("received STOP command");
   if (canceled) {
     finish_goal_succeeded(goal_handle, "已取消当前 Nav2 导航目标");
   } else {
-    finish_goal_aborted(
-      goal_handle,
-      interfaces::msg::ActionStatus::ABORTED,
-      "当前没有可取消的 Nav2 导航目标");
+    finish_goal_succeeded(goal_handle, "当前无活动导航，停止命令已确认");
   }
 }
 
@@ -321,6 +319,12 @@ XjrobotBridgeNode::Nav2RunOutcome XjrobotBridgeNode::run_nav2_navigation(
 
   auto result_future = nav2_client_->async_get_result(nav2_goal_handle);
   while (rclcpp::ok()) {
+    if (goal_handle->is_canceling()) {
+      cancel_active_nav2_goal("custom Navigate goal cancel requested");
+      clear_active_navigation_locked(goal_handle);
+      error_message = "导航已取消";
+      return Nav2RunOutcome::CANCELED;
+    }
     if (result_future.wait_for(std::chrono::milliseconds(200)) == std::future_status::ready) {
       break;
     }

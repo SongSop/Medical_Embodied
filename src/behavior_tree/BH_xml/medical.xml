@@ -141,26 +141,21 @@
         <ClearPatrolTrigger patrol_triggered="{patrol_triggered}"/>
       </Sequence>
       <Sequence name="PatrolRun">
+        <NextPatrolPoint patrol_point="{patrol_point}"/>
         <Fallback>
-          <IsBedProcessComplete bed_queue="{bed_queue}"/>
-          <SubTree ID="BedProcessTree"
-                   _autoremap="true"/>
+          <RetryUntilSuccessful num_attempts="2">
+            <NavgateTo target="{patrol_point}"
+                       nav_type="goal"/>
+          </RetryUntilSuccessful>
+          <IdleWait/>
         </Fallback>
-        <Sequence>
-          <NextPatrolPoint patrol_point="{patrol_point}"/>
-          <Fallback>
-            <RetryUntilSuccessful num_attempts="2">
-              <NavgateTo target="{patrol_point}"
-                         nav_type="goal"/>
-            </RetryUntilSuccessful>
-            <IdleWait/>
-          </Fallback>
-          <Detect_BedProcess mode="area"
-                             patrol_bed_id="{patrol_point}"
-                             bed_queue="{bed_queue}"
-                             interaction_mode="{interaction_mode}"
-                             context="{context}"/>
-        </Sequence>
+        <Detect_BedProcess mode="area"
+                           patrol_bed_id="{patrol_point}"
+                           bed_queue="{bed_queue}"
+                           interaction_mode="{interaction_mode}"
+                           context="{context}"/>
+        <SubTree ID="BedProcessTree"
+                 _autoremap="true"/>
       </Sequence>
     </Fallback>
   </BehaviorTree>

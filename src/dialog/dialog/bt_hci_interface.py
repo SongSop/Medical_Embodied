@@ -198,11 +198,24 @@ class LLMMockServer(Node):
 
         # end of 'while' 退出循环说明对话已经结束了
 
+
         result.status.status = ActionStatus.OK
         # 呼叫护士的原因
         result.summary = self.call_nurse_reason
         # 是否要呼叫护士
         result.need_call_nurse = self.call_nurse
+
+        if not self.call_nurse:
+            # --------------------------------------------------
+            # 说几句客套话
+            req = TtsOneshot.Request()
+            req.tts_text = "没有其他事情的话，小医先走了，有问题记得叫小医。"
+            req.block = True
+
+            # 调用服务，进行语音合成
+            self.tts_client.call(req)
+            # --------------------------------------------------
+
 
         goal_handle.succeed()
 

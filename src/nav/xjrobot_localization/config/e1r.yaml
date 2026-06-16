@@ -7,7 +7,7 @@ laser_mapping:
         filter_size_map: 0.2
         cube_side_length: 1000.0
         runtime_pos_log_enable: false
-        map_file_path: "/home/medical/maps/map_0610.pcd"
+        map_file_path: "/home/medical/maps/map_0615_2.pcd"
 
         common:
             lid_topic:  "/rslidar_points_fastlio"
@@ -30,10 +30,10 @@ laser_mapping:
             scan_rate: 10
 
         mapping:
-            acc_cov: 0.1
-            gyr_cov: 0.1
-            b_acc_cov: 0.0001
-            b_gyr_cov: 0.0001
+            gyr_cov: 5.40e-04
+            acc_cov: 3.15e-02
+            b_gyr_cov: 5.02e-10
+            b_acc_cov: 2.30e-08
             fov_degree:    120.0
             det_range:     200.0
             extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic
