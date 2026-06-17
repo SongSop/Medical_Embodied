@@ -59,6 +59,8 @@ def generate_launch_description():
                 'enable_accel': 'false',
                 'enable_gyro': 'false',
                 'pointcloud.enable': LaunchConfiguration('enable_pointcloud'),
+                'align_depth.enable': 'true',
+                'enable_sync': 'true',
             }.items()
         ),
     ])

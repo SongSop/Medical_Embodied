@@ -1,0 +1,17 @@
+{
+  "_comment": "深度相机专用：巡诊点→床位waypoint关联。通过深度信息和TF将检测框3D位置与waypoints.yaml中的床位坐标做空间最近邻匹配。",
+  "waypoints_config_path": "",
+  "_waypoints_config_path_note": "waypoints.yaml的路径，留空则使用默认路径 src/nav/xjrobot_bridge/config/waypoints.yaml",
+  "match_distance_threshold": 1.5,
+  "_match_distance_threshold_note": "匹配距离阈值(米)，检测框map坐标与waypoint坐标距离超过此值视为不匹配",
+  "patrol_points": [
+    {
+      "patrol_id": 0,
+      "bed_waypoints": ["bed_1", "bed_2"]
+    },
+    {
+      "patrol_id": 1,
+      "bed_waypoints": ["bed_3", "bed_4"]
+    }
+  ]
+}
