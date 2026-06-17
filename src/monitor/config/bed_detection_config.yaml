@@ -13,7 +13,7 @@ bed_id_offset: 0  # 床位ID偏移量，用于多区域场景
 
 # 服务参数
 service_name: "/detect_anomaly"
-camera_topic: "/camera/rgb/image_raw"
+camera_topic: "/camera/camera/color/image_raw"  # RealSense D455默认彩色图像话题
 
 # 可视化选项
 publish_debug_image: false

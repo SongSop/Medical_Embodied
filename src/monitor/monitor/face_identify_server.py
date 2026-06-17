@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 人脸识别服务节点
-通过 /camera/rgb/image_raw 话题获取图像，不再自行管理相机
+通过可配置的相机话题获取图像（默认RealSense D455: /camera/camera/color/image_raw）
 """
 import os
 import time
@@ -25,9 +25,11 @@ class FaceIdentifyServer(Node):
         self.declare_parameter('max_recognition_attempts', 10)
         self.declare_parameter('recognition_timeout', 10.0)
         self.declare_parameter('face_database_path', '')
+        self.declare_parameter('camera_topic', '/camera/camera/color/image_raw')
 
         self.max_recognition_attempts = int(self.get_parameter('max_recognition_attempts').value)
         self.recognition_timeout = float(self.get_parameter('recognition_timeout').value)
+        self.camera_topic = self.get_parameter('camera_topic').value
 
         db_path = str(self.get_parameter('face_database_path').value).strip()
         if not db_path:
@@ -38,13 +40,13 @@ class FaceIdentifyServer(Node):
         self.known_face_ids = []
         self.bridge = CvBridge()
 
-        # 订阅相机话题获取图像
+        # 订阅相机话题获取图像（通过参数配置，默认使用RealSense D455彩色图像话题）
         self.current_image = None
         self.image_received = False
         self.image_sub = self.create_subscription(
-            Image, '/camera/rgb/image_raw', self._image_callback, 10
+            Image, self.camera_topic, self._image_callback, 10
         )
-        self.get_logger().info('已订阅相机话题: /camera/rgb/image_raw')
+        self.get_logger().info(f'已订阅相机话题: {self.camera_topic}')
 
         # 发布模式切换指令到模拟相机
         self.mode_pub = self.create_publisher(String, '/camera/mode', 10)
