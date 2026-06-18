@@ -127,62 +127,45 @@ class BedDetectionNode(Node):
             self.get_logger().info(f'使用默认CLIP模型路径: {clip_model_path}')
         
         try:
-            # 加载检查点
-            checkpoint = torch.load(clip_model_path, map_location='cpu')
-            state_dict = checkpoint['clip_model']
-            
-            # 基于模型检查结果,使用ViT-L-14架构
+            checkpoint = torch.load(clip_model_path, map_location='cpu', weights_only=False)
+            self.clip_class_names = checkpoint.get('class_names', ['bed_empty', 'bed_with_person'])
+
+            # open_clip 加载 ViT-L-14 架构
             model_name = 'ViT-L-14'
-            
-            # 首先加载模型架构,但不打印其内部警告
-            clip_logger = logging.getLogger('root')
-            original_level = clip_logger.level
-            clip_logger.setLevel(logging.ERROR)
-            
-            try:
-                self.clip_model, _, self.clip_preprocess = open_clip.create_model_and_transforms(
-                    model_name, pretrained=None
-                )
-            finally:
-                clip_logger.setLevel(original_level)
-            
-            # 安全地加载权重,确保键匹配
+            self.clip_model, _, self.clip_preprocess = open_clip.create_model_and_transforms(
+                model_name, pretrained=None
+            )
+
+            # 加载 CLIP 编码器权重（兼容 open_clip / openai clip 键名差异）
+            state_dict = checkpoint['clip_model']
             model_state_dict = self.clip_model.state_dict()
-            
-            # 过滤掉不匹配的键
             filtered_state_dict = {}
             for key, value in state_dict.items():
                 if key in model_state_dict and value.shape == model_state_dict[key].shape:
                     filtered_state_dict[key] = value
-                else:
-                    self.get_logger().warn(f"跳过不匹配的权重: {key}")
-            
-            # 加载权重
-            missing_keys, unexpected_keys = self.clip_model.load_state_dict(filtered_state_dict, strict=False)
-            
-            if missing_keys:
-                self.get_logger().warn(f"缺失的权重键: {missing_keys}")
-            if unexpected_keys:
-                self.get_logger().warn(f"意外的权重键: {unexpected_keys}")
-            
-            self.clip_tokenizer = open_clip.get_tokenizer(model_name)
-            
-            # 将模型设置为评估模式
+            self.clip_model.load_state_dict(filtered_state_dict, strict=False)
             self.clip_model.eval()
-            
-            # 将模型移动到合适的设备
+
+            # 加载 Linear Probe 分类器头
+            feature_dim = checkpoint.get('feature_dim', 768)
+            self.clip_classifier = torch.nn.Linear(feature_dim, len(self.clip_class_names))
+            if 'classifier' in checkpoint:
+                classifier_sd = checkpoint['classifier']
+                sd = {}
+                for key, value in classifier_sd.items():
+                    sd[key.replace('linear.', '')] = value
+                self.clip_classifier.load_state_dict(sd)
+            self.clip_classifier.eval()
+
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             self.clip_model = self.clip_model.to(device)
-            
-            # 检查训练结果信息
+            self.clip_classifier = self.clip_classifier.to(device)
+
             if 'accuracy' in checkpoint:
                 self.get_logger().info(f'训练准确率: {checkpoint["accuracy"]:.4f}')
-            if 'class_names' in checkpoint:
-                self.get_logger().info(f'训练类别: {checkpoint["class_names"]}')
-            
-            self.get_logger().info(f'CLIP模型加载成功(设备: {device}): {clip_model_path}')
-            self.get_logger().info(f'加载了 {len(filtered_state_dict)}/{len(state_dict)} 个权重参数')
-            
+            self.get_logger().info(f'训练类别: {self.clip_class_names}')
+            self.get_logger().info(f'CLIP+Linear分类器加载成功(设备: {device}): {clip_model_path}')
+
         except Exception as e:
             self.get_logger().error(f'CLIP模型加载失败: {e}')
             raise
@@ -438,69 +421,63 @@ class BedDetectionNode(Node):
 
         return detections
 
+    def _classify_crop(self, crop_bgr):
+        """
+        使用 CLIP + Linear Probe 分类器对裁剪图分类。
+        与训练推理代码完全一致。
+
+        Returns:
+            (class_id, confidence): class_id 0=bed_empty, 1=bed_with_person
+        """
+        device = next(self.clip_model.parameters()).device
+        rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
+        pil_img = PILImage.fromarray(rgb)
+        img_tensor = self.clip_preprocess(pil_img).unsqueeze(0).to(device)
+
+        with torch.no_grad():
+            features = self.clip_model.encode_image(img_tensor)
+            features = features / features.norm(dim=-1, keepdim=True)
+            logits = self.clip_classifier(features.float())
+            probs = torch.softmax(logits, dim=1)
+            pred = logits.argmax(dim=1).item()
+
+        return pred, probs[0][pred].item()
+
     def detect_person_with_clip(self, bed_image):
         """
-        使用CLIP判断床位上是否有人 (Area模式)
-
-        Args:
-            bed_image (np.ndarray): 床位区域图像
+        使用 CLIP+Linear分类器 判断床位上是否有人 (Area模式)
 
         Returns:
             tuple: (bool, float) - (是否有人, 置信度)
         """
-        text = ["bed with person", "bed empty"]
-        return self._clip_classify(bed_image, text)
+        pred, conf = self._classify_crop(bed_image)
+        # 根据训练类别: 0=bed_empty, 1=bed_with_person
+        # 但class_names顺序从checkpoint读取，因此以实际类别名称为准
+        is_person = False
+        person_confidence = 0.0
+        for i, name in enumerate(self.clip_class_names):
+            if 'person' in name.lower() or 'with_person' in name.lower():
+                is_person = (pred == i)
+                if is_person:
+                    person_confidence = conf
+                break
+        # 回退：如果类别名解析失败，直接检查pred
+        if not is_person and pred == 1:
+            is_person = True
+            person_confidence = conf
+
+        return is_person, person_confidence
 
     def detect_fall_risk_with_clip(self, bed_image):
         """
         使用CLIP判断病人是否有坠床风险 (Bed模式)
-
-        Args:
-            bed_image (np.ndarray): 床位区域图像
+        TODO: 坠床检测模型训练完成后替换
 
         Returns:
             tuple: (bool, float) - (是否有坠床风险, 置信度)
         """
-        text = [
-            "a patient about to fall off a hospital bed",
-            "a patient safely lying in a hospital bed"
-        ]
-        return self._clip_classify(bed_image, text)
-
-    def _clip_classify(self, bed_image, text_prompts):
-        """
-        CLIP通用分类方法
-
-        Args:
-            bed_image (np.ndarray): 床位区域图像
-            text_prompts (list[str]): 两个文本提示, 第一个为"异常/正向", 第二个为"正常/负向"
-
-        Returns:
-            tuple: (bool, float) - (第一个提示得分更高, 第一个提示的置信度)
-        """
-        try:
-            bed_image_rgb = cv2.cvtColor(bed_image, cv2.COLOR_BGR2RGB)
-            bed_image_pil = PILImage.fromarray(bed_image_rgb)
-            image_tensor = self.clip_preprocess(bed_image_pil).unsqueeze(0)
-
-            device = next(self.clip_model.parameters()).device
-            text_tokens = self.clip_tokenizer(text_prompts).to(device)
-            image_tensor = image_tensor.to(device)
-
-            with torch.no_grad():
-                text_features = self.clip_model.encode_text(text_tokens)
-                image_features = self.clip_model.encode_image(image_tensor)
-
-            similarity = (image_features @ text_features.T).softmax(dim=-1)
-            positive_score = similarity[0][0].item()
-            negative_score = similarity[0][1].item()
-
-            is_positive = positive_score > negative_score
-            return is_positive, positive_score
-
-        except Exception as e:
-            self.get_logger().error(f'CLIP检测失败: {e}')
-            return False, 0.0
+        # 当前先用有人/无人分类器代替
+        return self.detect_person_with_clip(bed_image)
 
     def handle_detect_request(self, request, response):
         """
@@ -593,7 +570,8 @@ class BedDetectionNode(Node):
 
     def _match_detections_to_waypoints(self, detection_map_points, visible_waypoint_names):
         """
-        将检测框的map坐标与可见的waypoint做最近邻匹配。
+        将检测框的map坐标与可见的waypoint做强制一对一最近邻匹配。
+        每个检测框匹配最近且未被占用的waypoint，不过滤距离（床可移动）。
 
         Args:
             detection_map_points: [(x, y), ...] 检测框中心的map坐标列表
@@ -601,13 +579,11 @@ class BedDetectionNode(Node):
 
         Returns:
             [(waypoint_name, waypoint_index, wp_x, wp_y), ...]
-            匹配成功返回waypoint信息，失败返回None
+            每个检测框都有匹配结果，仅深度无效的为None
         """
-        threshold = self.waypoint_config.get('match_distance_threshold', 1.5)
         results = []
 
         for entry in detection_map_points:
-            # 跳过深度无效的检测框
             if entry is None:
                 results.append(None)
                 self.get_logger().info('空间匹配: 深度无效，跳过此检测框')
@@ -631,7 +607,8 @@ class BedDetectionNode(Node):
                     best_dist = dist
                     best_name = wp_name
 
-            if best_dist <= threshold and best_name is not None:
+            # 总是匹配最近waypoint，不设距离阈值
+            if best_name is not None:
                 wp = self.bed_waypoints[best_name]
                 results.append((best_name, wp['index'], wp['x'], wp['y']))
                 self.get_logger().info(
@@ -640,9 +617,8 @@ class BedDetectionNode(Node):
                 )
             else:
                 results.append(None)
-                self.get_logger().info(
-                    f'空间未匹配: det({det_x:.3f},{det_y:.3f}), '
-                    f'最近 {best_name}={best_dist:.3f}m > 阈值{threshold}m'
+                self.get_logger().warn(
+                    f'空间匹配: det({det_x:.3f},{det_y:.3f}) 无可用的waypoint'
                 )
 
         return results
@@ -814,11 +790,14 @@ class BedDetectionNode(Node):
             waypoint_matches = self._match_detections_to_waypoints(
                 detection_map_points, visible_names
             )
-            # 发布RViz标记
-            self._publish_debug_markers(patrol_id, detection_map_points,
-                                        waypoint_matches, visible_names)
         else:
             self.get_logger().info('使用索引映射模式（无深度/模拟相机）')
+            detection_map_points = []
+            waypoint_matches = []
+
+        # 发布RViz标记（不管哪种模式都发送巡诊点和床位waypoint）
+        self._publish_debug_markers(patrol_id, detection_map_points,
+                                    waypoint_matches, visible_names)
 
         # ==================== CLIP判断 ====================
         occupied_beds = []
@@ -873,25 +852,34 @@ class BedDetectionNode(Node):
 
         if self.publish_debug_image:
             self._publish_debug_image(self.current_image, bed_detections,
-                                      occupied_beds, patrol_id)
+                                      occupied_beds, waypoint_matches, patrol_id)
 
         return response
 
-    def _publish_debug_image(self, image, detections, occupied_beds, patrol_id):
-        """绘制YOLO检测框和床位标签，发布到调试话题"""
+    def _publish_debug_image(self, image, detections, occupied_beds, waypoint_matches, patrol_id):
+        """绘制YOLO检测框和床位标签，深度模式下显示实际匹配的waypoint名称"""
         debug_img = image.copy()
         for i, detection in enumerate(detections):
             x1, y1, x2, y2 = detection['bbox']
             conf = detection['confidence']
-            bed_id = self._get_bed_id(patrol_id, i)
 
-            # 有人/无人 用不同颜色
-            if bed_id in occupied_beds:
+            # 深度匹配模式：使用实际匹配的waypoint名称
+            if waypoint_matches and i < len(waypoint_matches) and waypoint_matches[i] is not None:
+                wp_name, wp_index, wp_x, wp_y = waypoint_matches[i]
+                bed_label = f'{wp_name}(idx={wp_index})'
+                is_occupied = wp_index in occupied_beds
+            else:
+                # 索引映射模式：回退到旧方法
+                bed_id = self._get_bed_id(patrol_id, i)
+                bed_label = f'Bed {bed_id}'
+                is_occupied = bed_id in occupied_beds
+
+            if is_occupied:
                 color = (0, 255, 0)    # 绿色：有人
-                label = f"Bed {bed_id} (OCCUPIED) {conf:.2f}"
+                label = f'{bed_label} (OCCUPIED) {conf:.2f}'
             else:
                 color = (0, 0, 255)    # 红色：无人
-                label = f"Bed {bed_id} (empty) {conf:.2f}"
+                label = f'{bed_label} (empty) {conf:.2f}'
 
             cv2.rectangle(debug_img, (x1, y1), (x2, y2), color, 2)
             cv2.putText(debug_img, label, (x1, y1 - 10),
