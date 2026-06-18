@@ -1,5 +1,5 @@
 patrol_route_id: "route_a"
-patrol_cycles: 2
+patrol_cycles: 1
 patrol_points: ["p0", "p1"]
 patrol_trigger_mode: "button"
 patrol_trigger_time: "08:00"

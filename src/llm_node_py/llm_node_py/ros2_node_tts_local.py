@@ -100,7 +100,7 @@ class LocalTtsServiceNode(Node):
                 text=text,
                 language="Chinese",
                 speaker="Serena",
-                instruct="用温柔、自然的语气说话，语速稍慢。",
+                # instruct="用温柔、自然的语气说话，语速稍慢。",
             )
 
         return wavs[0], sample_rate

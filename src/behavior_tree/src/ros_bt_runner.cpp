@@ -125,7 +125,7 @@ struct PatrolContext
     int cycles_total = 1;
     int cycles_remaining = 1;
     int point_index = 0;
-    std::vector<int> points = {0,1,2,3,4};
+    std::vector<int> points = {0, 1};
     bool complete = false;
 };
 
@@ -190,10 +190,15 @@ public:
 
     NodeStatus onStart() override
     {
-        std::cout<<"Navgate to start\n";
         const auto target = getInput<int>("target").value_or(-1);
         const auto nav_type_str = getInput<std::string>("nav_type").value_or("stop");
         const int nav_type = navTypeFromString(nav_type_str);
+        std::cout << "NavgateTo start target_index=" << target << " nav_type=" << nav_type_str << "\n";
+
+        // STOP 前清理 client 上可能残留的 goal（例如 patrol 被 halt 后未 cancel 的目标）。
+        if (nav_type == NAVIGATION::STOP) {
+            navigate_client_->async_cancel_all_goals();
+        }
 
         if (!navigate_client_->wait_for_action_server(100ms))
         {
@@ -249,14 +254,22 @@ public:
             auto wrapped = result_future_.get();
             phase_ = Phase::IDLE;
             goal_handle_.reset();
-            if (wrapped.code != rclcpp_action::ResultCode::SUCCEEDED)
-            {
-                return NodeStatus::FAILURE;
+            const uint8_t status_code = wrapped.result ?
+                wrapped.result->status.status : interfaces::msg::ActionStatus::ABORTED;
+            std::cout << "NavgateTo complete result_code=" << static_cast<int>(wrapped.code)
+                      << " status=" << static_cast<int>(status_code) << "\n";
+            if (wrapped.code == rclcpp_action::ResultCode::SUCCEEDED) {
+                return (status_code == interfaces::msg::ActionStatus::OK)
+                           ? NodeStatus::SUCCESS
+                           : NodeStatus::FAILURE;
             }
-            std::cout<<"Navgate to goal complete status="<<int(wrapped.result->status.status)<<"\n";
-            return (wrapped.result->status.status == interfaces::msg::ActionStatus::OK)
-                       ? NodeStatus::SUCCESS
-                       : NodeStatus::FAILURE;
+            // 被 STOP / 新目标抢占时桥接层返回 PREEMPTED，行为树应继续而非重试。
+            if (wrapped.code == rclcpp_action::ResultCode::CANCELED &&
+                status_code == interfaces::msg::ActionStatus::PREEMPTED)
+            {
+                return NodeStatus::SUCCESS;
+            }
+            return NodeStatus::FAILURE;
         }
 
         return NodeStatus::FAILURE;
@@ -264,6 +277,11 @@ public:
 
     void onHalted() override
     {
+        if (goal_handle_) {
+            navigate_client_->async_cancel_goal(goal_handle_);
+        } else if (phase_ != Phase::IDLE) {
+            navigate_client_->async_cancel_all_goals();
+        }
         phase_ = Phase::IDLE;
         goal_handle_.reset();
     }
@@ -830,10 +848,10 @@ int main(int argc, char** argv)
                 if(rclcpp::spin_until_future_complete(ros_node_,fut,2s) == rclcpp::FutureReturnCode::SUCCESS && fut.get()->ok){
                     //TODO 更新ros定义的信息，更新黑板的默认值，或更新ros_ctx的值
                     patrol_ctx->route_id = "route_a";
-                    patrol_ctx->cycles_total = 2;
-                    patrol_ctx->cycles_remaining = 2;
+                    patrol_ctx->cycles_total = 1;
+                    patrol_ctx->cycles_remaining = 1;
                     patrol_ctx->point_index = 0;
-                    patrol_ctx->points = {0,1,2};
+                    patrol_ctx->points = {0, 1};
                     patrol_ctx->complete = false;
                     return NodeStatus::SUCCESS;
                 }

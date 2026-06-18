@@ -28,133 +28,60 @@ xjrobot_bridge_node:
       - bed_2
       - bed_3
       - bed_4
-      - bed_5
-      - bed_6
-      - bed_7
-      - bed_8
-      - bed_9
-      - bed_10
-      - bed_11
-      - bed_12
-
     waypoints:
       # 充电桩前候位点：请根据实机标定 x/y/yaw，机器人应能在此位置看到 AprilTag。
       dock_staging:
         index: 100
         name: charge_staging
         frame_id: map
-        x: -4.26
-        y: -0.85
-        yaw: 0.54
+        x: 1.032
+        y: -0.243
+        yaw: -1.494
 
       patrol_0:
         index: 0
         name: corridor_left_mid
         frame_id: map
-        x: 14.83
-        y: -6.39
-        yaw: -1.50
+        x: 4.403
+        y: -0.538
+        yaw: -1.674
         
       patrol_1:
         index: 1
         name: corridor_right_mid
         frame_id: map
-        x: 3.75
-        y: -6.49
-        yaw: -1.50
+        x: 4.403
+        y: -0.538
+        yaw: -1.674
 
       bed_1:
         index: 2
         name: corridor_left_1
         frame_id: map
-        x: 15.367
-        y: -8.344
-        yaw: 0.093
+        x: 4.46
+        y: -3.874
+        yaw: 0.01
 
       bed_2:
         index: 3
         name: corridor_left_2
         frame_id: map
-        x: 15.359
-        y: -9.443
-        yaw: 0.054
+        x: 4.54
+        y: -3.729
+        yaw: 3.115
 
       bed_3:
         index: 4
-        name: corridor_left_3
+        name: corridor_right_1
         frame_id: map
-        x: 15.353
-        y: -10.898
-        yaw: 0.136
+        x: 4.46
+        y: -3.874
+        yaw: 0.01
 
       bed_4:
         index: 5
-        name: corridor_left_4
-        frame_id: map
-        x: 15.213
-        y: -12.261
-        yaw: -3.108
-
-      bed_5:
-        index: 6
-        name: corridor_left_5
-        frame_id: map
-        x: 15.351
-        y: -13.806
-        yaw: 2.983
-
-      bed_6:
-        index: 7
-        name: corridor_left_6
-        frame_id: map
-        x: 15.400
-        y: -15.665
-        yaw: 3.024
-
-      bed_7:
-        index: 8
-        name: corridor_right_1
-        frame_id: map
-        x: 4.109
-        y: -8.437
-        yaw: 0.063
-
-      bed_8:
-        index: 9
         name: corridor_right_2
         frame_id: map
-        x: 4.133
-        y: -10.108
-        yaw: 0.250
-
-      bed_9:
-        index: 10
-        name: corridor_right_3
-        frame_id: map
-        x: 4.200
-        y: -12.031
-        yaw: 0.051
-
-      bed_10:
-        index: 11
-        name: corridor_right_4
-        frame_id: map
-        x: 4.209
-        y: -13.306
-        yaw: 3.041
-
-      bed_11:
-        index: 12
-        name: corridor_right_5
-        frame_id: map
-        x: 4.107
-        y: -14.836
-        yaw: 3.005
-
-      bed_12:
-        index: 13
-        name: corridor_right_6
-        frame_id: map
-        x: 4.175
-        y: -17.738
-        yaw: -1.464
+        x: 4.54
+        y: -3.729
+        yaw: 3.115

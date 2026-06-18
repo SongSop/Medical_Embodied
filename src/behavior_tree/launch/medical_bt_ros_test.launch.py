@@ -21,15 +21,15 @@ def generate_launch_description():
                 'battery_low_threshold': 20.0,
             }],
         ),
-        Node(
-            package='behavior_tree',
-            executable='medical_bt_ros_test_driver.py',
-            name='medical_bt_ros_test_driver',
-            output='screen',
-            parameters=[{
-                # 'start_delay': 1.0,
-                # 'ticks': 140,
-                # 'tick_hz': 20,
-            }],
-        ),
+        # Node(
+        #     package='behavior_tree',
+        #     executable='medical_bt_ros_test_driver.py',
+        #     name='medical_bt_ros_test_driver',
+        #     output='screen',
+        #     parameters=[{
+        #         # 'start_delay': 1.0,
+        #         # 'ticks': 140,
+        #         # 'tick_hz': 20,
+        #     }],
+        # ),
     ])
