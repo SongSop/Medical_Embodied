@@ -570,8 +570,9 @@ class BedDetectionNode(Node):
 
     def _match_detections_to_waypoints(self, detection_map_points, visible_waypoint_names):
         """
-        将检测框的map坐标与可见的waypoint做强制一对一最近邻匹配。
-        每个检测框匹配最近且未被占用的waypoint，不过滤距离（床可移动）。
+        象限匹配：以可见waypoint的几何中心为原点做十字分割，
+        每个检测点和waypoint按象限归属一对一匹配。
+        不受深度误差和床小幅移动影响，精度远高于绝对距离最近邻。
 
         Args:
             detection_map_points: [(x, y), ...] 检测框中心的map坐标列表
@@ -579,47 +580,83 @@ class BedDetectionNode(Node):
 
         Returns:
             [(waypoint_name, waypoint_index, wp_x, wp_y), ...]
-            每个检测框都有匹配结果，仅深度无效的为None
         """
+        # 收集waypoint坐标，计算十字中心
+        wp_coords = []
+        for name in visible_waypoint_names:
+            wp = self.bed_waypoints.get(name)
+            if wp:
+                wp_coords.append((name, wp['x'], wp['y'], wp['index']))
+
+        if not wp_coords:
+            return [None] * len(detection_map_points)
+
+        cx = sum(w[1] for w in wp_coords) / len(wp_coords)
+        cy = sum(w[2] for w in wp_coords) / len(wp_coords)
+        self.get_logger().info(f'象限匹配: 十字中心=({cx:.3f},{cy:.3f}), {len(wp_coords)}个waypoint')
+
+        # waypoint按象限分组: key=(qx,qy), 0=左/下, 1=右/上
+        wp_quadrants = {}
+        for name, wx, wy, wp_idx in wp_coords:
+            key = (1 if wx >= cx else 0, 1 if wy >= cy else 0)
+            if key not in wp_quadrants:
+                wp_quadrants[key] = []
+            wp_quadrants[key].append((name, wp_idx, wx, wy))
+
         results = []
+        used_quadrants = set()
 
         for entry in detection_map_points:
             if entry is None:
                 results.append(None)
-                self.get_logger().info('空间匹配: 深度无效，跳过此检测框')
+                self.get_logger().info('象限匹配: 深度无效，跳过此检测框')
                 continue
 
             det_x, det_y = entry
-            best_name = None
-            best_dist = float('inf')
+            det_key = (1 if det_x >= cx else 0, 1 if det_y >= cy else 0)
 
-            # 移除已占用的waypoint避免重复匹配
-            used_names = {r[0] for r in results if r is not None}
+            # 同象限匹配
+            candidates = wp_quadrants.get(det_key, [])
+            available = [w for w in candidates if det_key not in used_quadrants]
 
-            for wp_name in visible_waypoint_names:
-                if wp_name in used_names:
-                    continue
-                wp = self.bed_waypoints.get(wp_name)
-                if wp is None:
-                    continue
-                dist = np.sqrt((det_x - wp['x']) ** 2 + (det_y - wp['y']) ** 2)
-                if dist < best_dist:
-                    best_dist = dist
-                    best_name = wp_name
-
-            # 总是匹配最近waypoint，不设距离阈值
-            if best_name is not None:
-                wp = self.bed_waypoints[best_name]
-                results.append((best_name, wp['index'], wp['x'], wp['y']))
+            if available:
+                name, wp_idx, wx, wy = available[0]
+                used_quadrants.add(det_key)
+                results.append((name, wp_idx, wx, wy))
+                qname = {(1, 1): '右上', (0, 1): '左上', (0, 0): '左下', (1, 0): '右下'}
+                dist = np.sqrt((det_x - wx) ** 2 + (det_y - wy) ** 2)
                 self.get_logger().info(
-                    f'空间匹配: det({det_x:.3f},{det_y:.3f}) → {best_name} '
-                    f'(wp=({wp["x"]:.3f},{wp["y"]:.3f}), dist={best_dist:.3f}m)'
+                    f'象限匹配: det({det_x:.3f},{det_y:.3f}) [{qname.get(det_key, "?")}] '
+                    f'→ {name} (dist={dist:.3f}m)'
                 )
             else:
-                results.append(None)
-                self.get_logger().warn(
-                    f'空间匹配: det({det_x:.3f},{det_y:.3f}) 无可用的waypoint'
-                )
+                # 回退：跨象限最近邻
+                best_name = best_idx = None
+                best_wx = best_wy = 0.0
+                best_dist = float('inf')
+                best_key = None
+                for qkey, wlist in wp_quadrants.items():
+                    if qkey in used_quadrants:
+                        continue
+                    for name, wp_idx, wx, wy in wlist:
+                        d = np.sqrt((det_x - wx) ** 2 + (det_y - wy) ** 2)
+                        if d < best_dist:
+                            best_dist = d
+                            best_name, best_idx = name, wp_idx
+                            best_wx, best_wy = wx, wy
+                            best_key = qkey
+                if best_name is not None:
+                    used_quadrants.add(best_key)
+                    results.append((best_name, best_idx, best_wx, best_wy))
+                    self.get_logger().info(
+                        f'象限匹配(回退): det({det_x:.3f},{det_y:.3f}) '
+                        f'→ {best_name} (dist={best_dist:.3f}m)'
+                    )
+                else:
+                    results.append(None)
+                    self.get_logger().warn(
+                        f'象限匹配: det({det_x:.3f},{det_y:.3f}) 无可用的waypoint'
+                    )
 
         return results
 
