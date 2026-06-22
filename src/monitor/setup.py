@@ -83,8 +83,9 @@ setup(
             'monitor_mock_pub = monitor.monitor_mock_pub:main',
             'anomaly_detect_server = monitor.anomaly_detect_server:main',
             'face_identify_server = monitor.face_identify_server:main',
-            'bed_detection_server = monitor.bed_detection_server:main',      # 新增
-            'mock_camera = monitor.mock_camera:main',                        # 新增
+            'bed_detection_server = monitor.bed_detection_server:main',
+            'mock_patrol_detection_server = monitor.mock_patrol_detection_server:main',
+            'mock_camera = monitor.mock_camera:main',
         ],
     },
 )

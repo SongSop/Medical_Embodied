@@ -9,8 +9,8 @@ from launch_ros.substitutions import FindPackageShare
 # 实机默认地图：
 # - DEFAULT_MAP_PATH：Nav2 使用的 2D 栅格地图 yaml
 # - DEFAULT_PCD_MAP_PATH：FastLIO / 全局重定位使用的 3D PCD 地图
-DEFAULT_MAP_PATH = "/home/medical/maps/map_0615_2.yaml"
-DEFAULT_PCD_MAP_PATH = "/home/medical/maps/map_0615_2.pcd"
+DEFAULT_MAP_PATH = "/home/medical/maps/map_0617.yaml"
+DEFAULT_PCD_MAP_PATH = "/home/medical/maps/map_0617.pcd"
 
 
 def generate_launch_description():
@@ -31,12 +31,29 @@ def generate_launch_description():
     bridge_launch = PathJoinSubstitution(
         [FindPackageShare("xjrobot_bridge"), "launch", "xjrobot_bridge.launch.py"]
     )
+    rslidar_mapping_launch = PathJoinSubstitution(
+        [FindPackageShare("fast_lio"), "launch", "rslidar_mapping.launch.py"]
+    )
     default_waypoints_file = PathJoinSubstitution(
         [FindPackageShare("xjrobot_bridge"), "config", "waypoints.yaml"]
     )
 
     use_sim_time = LaunchConfiguration("use_sim_time")
     controller = LaunchConfiguration("controller")
+
+    # E1R 雷达与 IMU 驱动链路：
+    # rslidar_sdk、fdlink IMU、点云转换由 fast_lio/rslidar_mapping.launch.py 维护。
+    # run_fastlio 默认 false，FastLIO 本体仍由 localization.launch.py 启动。
+    rslidar_mapping_include = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(rslidar_mapping_launch),
+        condition=IfCondition(LaunchConfiguration("launch_rslidar")),
+        launch_arguments={
+            "use_sim_time": use_sim_time,
+            "run_fastlio": LaunchConfiguration("rslidar_run_fastlio"),
+            "rviz": LaunchConfiguration("rslidar_rviz"),
+            "launch_imu_rotate": LaunchConfiguration("rslidar_launch_imu_rotate"),
+        }.items(),
+    )
 
     # 底盘与传感器链路：
     # CAN 底盘、手柄、E1R、点云地面分割、robot_state_publisher、EKF 都由 base.launch.py 维护。
@@ -153,6 +170,32 @@ def generate_launch_description():
             # 子系统开关用于实机调试和分段 bringup：
             # 例如只调定位时可 launch_navigation:=false launch_bridge:=false。
             DeclareLaunchArgument(
+                "launch_rslidar",
+                default_value="true",
+                description="Launch E1R lidar driver, IMU and pointcloud converter via fast_lio/rslidar_mapping.launch.py.",
+            ),
+            DeclareLaunchArgument(
+                "rslidar_run_fastlio",
+                default_value="false",
+                description=(
+                    "Pass run_fastlio to rslidar_mapping.launch.py. "
+                    "Keep false when localization.launch.py runs FastLIO."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "rslidar_rviz",
+                default_value="false",
+                description="Pass rviz to rslidar_mapping.launch.py (only applies when rslidar_run_fastlio is true).",
+            ),
+            DeclareLaunchArgument(
+                "rslidar_launch_imu_rotate",
+                default_value="false",
+                description=(
+                    "Pass launch_imu_rotate to rslidar_mapping.launch.py. "
+                    "Set true if no other launch already runs imu_rotate_node."
+                ),
+            ),
+            DeclareLaunchArgument(
                 "launch_base",
                 default_value="true",
                 description="Launch chassis, lidar, ground segmentation, robot state publisher and EKF.",
@@ -230,6 +273,7 @@ def generate_launch_description():
                 default_value="2.0",
                 description="Delay before publishing the initial pose, seconds.",
             ),
+            rslidar_mapping_include,
             base_include,
             localization_include,
             # Nav2 依赖 /tf、/odom、/scan、map->odom 等链路。

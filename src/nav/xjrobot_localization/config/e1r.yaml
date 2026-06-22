@@ -7,7 +7,7 @@ laser_mapping:
         filter_size_map: 0.2
         cube_side_length: 1000.0
         runtime_pos_log_enable: false
-        map_file_path: "/home/medical/maps/map_0615_2.pcd"
+        map_file_path: "/home/medical/maps/map_0617.pcd"
 
         common:
             lid_topic:  "/rslidar_points_fastlio"
@@ -59,9 +59,9 @@ global_localization:
     ros__parameters:
         map_voxel_size: 0.4
         scan_voxel_size: 0.1
-        freq_localization: 0.5
+        freq_localization: 0.1
         freq_global_map: 0.25
-        localization_threshold: 0.8
+        localization_threshold: 0.90
         fov: 6.28319
         fov_far: 300
         pcd_map_topic: "/pcd_map"
@@ -75,7 +75,7 @@ global_localization:
         verbose_log: false               # true 时恢复 ICP 过程详细 info，默认仅保留必要异常日志
         warning_log_period: 5.0          # 同类定位 warning 最短输出间隔，单位 s
         coarse_correspondence_distance: 15.0
-        fine_correspondence_distance: 3.0
+        fine_correspondence_distance: 1.5
 
 transform_fusion:
     ros__parameters:

@@ -36,6 +36,12 @@ import open_clip
 MODE_AREA = 0  # 区域扫描模式
 MODE_BED = 1   # 单床检测模式
 
+# RViz 床位配色（按槽位索引区分）
+_BED_MARKER_COLORS = [
+    (1.0, 0.25, 0.25), (0.25, 0.45, 1.0), (1.0, 0.65, 0.1), (0.65, 0.25, 0.85),
+    (0.2, 0.85, 0.45), (1.0, 0.3, 0.65), (0.35, 0.8, 0.95), (0.9, 0.85, 0.2),
+]
+
 class BedDetectionNode(Node):
     def __init__(self):
         super().__init__('bed_detection_node')
@@ -89,6 +95,14 @@ class BedDetectionNode(Node):
             waypoint_mapping_path = os.path.join(self.share_dir, 'config', 'patrol_waypoint_mapping.json')
         self.waypoint_config = self._load_patrol_waypoint_mapping(waypoint_mapping_path)
         self.bed_waypoints = self._load_waypoints(self.waypoint_config.get('waypoints_config_path', ''))
+        self.invert_lateral_sign = bool(self.waypoint_config.get('invert_lateral_sign', False))
+        self.match_distance_threshold = float(
+            self.waypoint_config.get('match_distance_threshold', 1.5)
+        )
+        self.get_logger().info(
+            f'深度匹配: 距离阈值={self.match_distance_threshold}m, '
+            f'invert_lateral_sign={self.invert_lateral_sign}'
+        )
 
         # 记录路径信息
         self.get_logger().info(f'Python文件目录: {current_file_dir}')
@@ -346,6 +360,34 @@ class BedDetectionNode(Node):
         self._patrol_points = patrol_points
         return bed_waypoints
 
+    def _get_patrol_bed_names(self, patrol_id):
+        """返回当前巡诊点允许的床位 waypoint 名称（顺序即槽位）。"""
+        for pt in self.waypoint_config.get('patrol_points', []):
+            if pt.get('patrol_id') == patrol_id:
+                return list(pt.get('bed_waypoints', []))
+        return []
+
+    def _get_patrol_bed_slots(self, patrol_id):
+        """
+        构建巡诊点床位槽位列表。床位编号与区域严格绑定，不会跨巡诊点。
+        每个槽位: {slot, name, bed_id, x, y, yaw}
+        """
+        slots = []
+        for slot, name in enumerate(self._get_patrol_bed_names(patrol_id)):
+            wp = self.bed_waypoints.get(name)
+            if wp is None:
+                self.get_logger().warn(f'巡诊点{patrol_id}缺少waypoint: {name}')
+                continue
+            slots.append({
+                'slot': slot,
+                'name': name,
+                'bed_id': wp['index'],
+                'x': wp['x'],
+                'y': wp['y'],
+                'yaw': wp['yaw'],
+            })
+        return slots
+
     def _get_bed_id(self, patrol_id, detection_index):
         """根据巡诊点ID和YOLO检测框索引获取对应的导航床位编号"""
         if patrol_id in self.patrol_bed_map:
@@ -354,6 +396,242 @@ class BedDetectionNode(Node):
                 return bed_map[detection_index]
         # 无映射时按顺序编号 (index 0 -> bed_id 1)
         return detection_index + 1
+
+    def _waypoint_to_bed_id(self, waypoint_name, waypoint_index):
+        """返回导航床位编号（waypoints.yaml 中的 index 字段）。"""
+        del waypoint_name
+        return waypoint_index
+
+    def _map_point_xy(self, map_point):
+        """从 map_point 元组提取 map 坐标 (x, y)。"""
+        if map_point is None:
+            return None
+        return map_point[0], map_point[1]
+
+    def _detection_lateral_sign(self, y_robot):
+        sign = np.sign(y_robot) if abs(y_robot) > 0.05 else 0
+        return -sign if self.invert_lateral_sign and sign != 0 else sign
+
+    def _bed_lateral_sign(self, bed_yaw, patrol_yaw):
+        return np.sign(np.sin(bed_yaw - patrol_yaw))
+
+    def _lateral_compatible(self, y_robot, bed_yaw, patrol_yaw):
+        """同坐标双侧床位：用横向符号区分左右。"""
+        det_sign = self._detection_lateral_sign(y_robot)
+        bed_sign = self._bed_lateral_sign(bed_yaw, patrol_yaw)
+        if det_sign == 0 or bed_sign == 0:
+            return True
+        return det_sign == bed_sign
+
+    def _prepare_detections(self, bed_detections, patrol_id):
+        """
+        限制检测数量不超过巡诊点床位数，并附加像素/地图投影信息。
+        返回按图像从左到右排序的列表，每项:
+          {det, det_index, u, map_point}
+        """
+        slots = self._get_patrol_bed_slots(patrol_id)
+        max_beds = len(slots)
+        if max_beds == 0:
+            return [], slots
+
+        sorted_dets = sorted(bed_detections, key=lambda d: d['confidence'], reverse=True)
+        sorted_dets = sorted_dets[:max_beds]
+
+        prepared = []
+        for det_index, det in enumerate(sorted_dets):
+            x1, y1, x2, y2 = det['bbox']
+            u = (x1 + x2) / 2.0
+            v = (y1 + y2) / 2.0
+            map_point = None
+            if self.use_depth_matching and self.depth_received and self.camera_intrinsics:
+                map_point = self._pixel_to_map_point(int(u), int(v), patrol_id)
+            prepared.append({
+                'det': det,
+                'det_index': det_index,
+                'u': u,
+                'v': v,
+                'map_point': map_point,
+            })
+
+        return prepared, slots
+
+    def _match_cost(self, map_point, bed_slot, patrol_pose):
+        """检测点到槽位的匹配代价；不可匹配返回 inf。"""
+        if map_point is None:
+            return float('inf')
+        det_x, det_y, y_robot = map_point[0], map_point[1], map_point[2]
+        dist = np.hypot(det_x - bed_slot['x'], det_y - bed_slot['y'])
+        if dist > self.match_distance_threshold:
+            return float('inf')
+        if not self._lateral_compatible(y_robot, bed_slot['yaw'], patrol_pose['yaw']):
+            return float('inf')
+        return dist
+
+    def _group_beds_by_side(self, bed_slots, patrol_pose):
+        """左侧近→远 bed_1,2；右侧近→远 bed_3,4。"""
+        pyaw = patrol_pose['yaw']
+        left_beds, right_beds = [], []
+        for bed in bed_slots:
+            fwd = self._forward_distance(bed['x'], bed['y'], patrol_pose)
+            entry = (fwd, bed)
+            if self._bed_side(bed['yaw'], pyaw) > 0:
+                left_beds.append(entry)
+            else:
+                right_beds.append(entry)
+        left_beds.sort(key=lambda item: item[0])
+        right_beds.sort(key=lambda item: item[0])
+        return (
+            [bed for _, bed in left_beds],
+            [bed for _, bed in right_beds],
+        )
+
+    def _group_dets_by_side(self, prepared, patrol_pose):
+        """按横向分左右，同侧内按前向距离由近到远排序。"""
+        left_dets, right_dets, unknown_dets = [], [], []
+        for det_i, item in enumerate(prepared):
+            pt = item['map_point']
+            if pt is not None:
+                side = self._det_side(pt[2])
+                fwd = self._det_forward(pt, patrol_pose)
+                if side > 0:
+                    left_dets.append((fwd, det_i))
+                elif side < 0:
+                    right_dets.append((fwd, det_i))
+                else:
+                    unknown_dets.append(det_i)
+            else:
+                unknown_dets.append(det_i)
+
+        left_dets.sort(key=lambda item: item[0])
+        right_dets.sort(key=lambda item: item[0])
+        return (
+            [det_i for _, det_i in left_dets],
+            [det_i for _, det_i in right_dets],
+            unknown_dets,
+        )
+
+    def _fallback_group_dets_by_image(self, prepared):
+        """无深度时：按图像左右分区，同侧按 v 由大到小（近→远）。"""
+        if self.camera_intrinsics is None:
+            cx = 640.0
+        else:
+            cx = self.camera_intrinsics[2]
+        left_dets, right_dets = [], []
+        for det_i, item in enumerate(prepared):
+            entry = (item['v'], det_i)
+            if item['u'] < cx:
+                left_dets.append(entry)
+            else:
+                right_dets.append(entry)
+        left_dets.sort(key=lambda item: -item[0])
+        right_dets.sort(key=lambda item: -item[0])
+        return (
+            [det_i for _, det_i in left_dets],
+            [det_i for _, det_i in right_dets],
+        )
+
+    def _assign_side_pairs(self, matches, det_indices, bed_slots, prepared, patrol_pose):
+        """同侧内按远近顺序分配；空间校验失败时仍强制分配床位编号。"""
+        for det_i, bed in zip(det_indices, bed_slots):
+            pt = prepared[det_i]['map_point']
+            spatial_ok = (
+                pt is None
+                or np.isfinite(self._match_cost(pt, bed, patrol_pose))
+            )
+            matches[det_i] = bed
+            fwd = self._det_forward(pt, patrol_pose)
+            coord = (
+                f'({pt[0]:.2f},{pt[1]:.2f},fwd={fwd:.2f})'
+                if pt else f'(image u={prepared[det_i]["u"]:.0f}, v={prepared[det_i]["v"]:.0f})'
+            )
+            mode = '空间匹配' if spatial_ok else '远近强制分配'
+            self.get_logger().info(
+                f'{mode}: det#{prepared[det_i]["det_index"]} {coord} → '
+                f'{bed["name"]}(bed_id={bed["bed_id"]})'
+            )
+
+    def _assign_unknown_dets(self, matches, unknown_dets, prepared, left_beds, right_beds):
+        """无法分侧的检测：按图像左右 + 近→远分配到剩余槽位。"""
+        if not unknown_dets:
+            return
+
+        used = {m['bed_id'] for m in matches if m}
+        left_pool = [b for b in left_beds if b['bed_id'] not in used]
+        right_pool = [b for b in right_beds if b['bed_id'] not in used]
+
+        if self.camera_intrinsics is None:
+            cx = 640.0
+        else:
+            cx = self.camera_intrinsics[2]
+
+        left_unknown, right_unknown = [], []
+        for det_i in unknown_dets:
+            if matches[det_i] is not None:
+                continue
+            entry = (prepared[det_i]['v'], det_i)
+            if prepared[det_i]['u'] < cx:
+                left_unknown.append(entry)
+            else:
+                right_unknown.append(entry)
+
+        left_unknown.sort(key=lambda item: -item[0])
+        right_unknown.sort(key=lambda item: -item[0])
+
+        for (_, det_i), bed in zip(left_unknown, left_pool):
+            matches[det_i] = bed
+            self.get_logger().info(
+                f'远近强制分配: det#{prepared[det_i]["det_index"]} '
+                f'(image) → {bed["name"]}(bed_id={bed["bed_id"]})'
+            )
+        for (_, det_i), bed in zip(right_unknown, right_pool):
+            matches[det_i] = bed
+            self.get_logger().info(
+                f'远近强制分配: det#{prepared[det_i]["det_index"]} '
+                f'(image) → {bed["name"]}(bed_id={bed["bed_id"]})'
+            )
+
+    def _assign_beds(self, prepared, bed_slots, patrol_id):
+        """
+        按设计规则匹配：左侧近→远 1,2；右侧近→远 3,4。
+        YOLO 检测成功的床位即使空间未匹配，也按同侧远近强制分配编号。
+        """
+        if not prepared or not bed_slots:
+            return []
+
+        patrol_pose = self._patrol_points.get(f'patrol_{patrol_id}')
+        if patrol_pose is None:
+            self.get_logger().warn(f'找不到巡诊点 patrol_{patrol_id}，按槽位顺序强制分配')
+            return [bed_slots[i] if i < len(bed_slots) else None for i in range(len(prepared))]
+
+        left_beds, right_beds = self._group_beds_by_side(bed_slots, patrol_pose)
+        left_dets, right_dets, unknown_dets = self._group_dets_by_side(prepared, patrol_pose)
+
+        if not left_dets and not right_dets:
+            self.get_logger().info('无有效深度侧向信息，使用图像左右分区 + 近→远排序')
+            left_dets, right_dets = self._fallback_group_dets_by_image(prepared)
+            unknown_dets = []
+
+        matches = [None] * len(prepared)
+        self._assign_side_pairs(matches, left_dets, left_beds, prepared, patrol_pose)
+        self._assign_side_pairs(matches, right_dets, right_beds, prepared, patrol_pose)
+        self._assign_unknown_dets(matches, unknown_dets, prepared, left_beds, right_beds)
+
+        # 兜底：仍有未分配的检测，按全局远近（图像 v）占用剩余槽位
+        unmatched = [i for i, m in enumerate(matches) if m is None]
+        if unmatched:
+            used = {m['bed_id'] for m in matches if m}
+            remaining = [b for b in bed_slots if b['bed_id'] not in used]
+            fallback_dets = sorted(
+                unmatched, key=lambda i: -prepared[i]['v']
+            )
+            for det_i, bed in zip(fallback_dets, remaining):
+                matches[det_i] = bed
+                self.get_logger().info(
+                    f'远近强制分配(兜底): det#{prepared[det_i]["det_index"]} → '
+                    f'{bed["name"]}(bed_id={bed["bed_id"]})'
+                )
+
+        return matches
 
     def image_callback(self, msg):
         """接收相机图像"""
@@ -524,7 +802,7 @@ class BedDetectionNode(Node):
           → y_map = patrol_y + z_cam*sin(yaw) - x_cam*cos(yaw)
 
         Returns:
-            (x, y) in map frame, or None if conversion fails
+            (x, y, y_robot, x_robot) in map/robot frame, or None
         """
         if self.current_depth is None or self.camera_intrinsics is None:
             return None
@@ -566,109 +844,55 @@ class BedDetectionNode(Node):
         x_map = px + x_robot * cos_yaw - y_robot * sin_yaw
         y_map = py + x_robot * sin_yaw + y_robot * cos_yaw
 
-        return (x_map, y_map)
+        return (x_map, y_map, y_robot, x_robot)
 
-    def _match_detections_to_waypoints(self, detection_map_points, visible_waypoint_names):
-        """
-        象限匹配：以可见waypoint的几何中心为原点做十字分割，
-        每个检测点和waypoint按象限归属一对一匹配。
-        不受深度误差和床小幅移动影响，精度远高于绝对距离最近邻。
+    def _bed_side(self, bed_yaw, patrol_yaw):
+        """左侧 +1，右侧 -1（由 waypoint yaw 相对巡诊朝向决定）。"""
+        sign = self._bed_lateral_sign(bed_yaw, patrol_yaw)
+        return 1 if sign >= 0 else -1
 
-        Args:
-            detection_map_points: [(x, y), ...] 检测框中心的map坐标列表
-            visible_waypoint_names: [str, ...] 该巡诊点可见的bed waypoint名称
+    def _det_side(self, y_robot):
+        sign = self._detection_lateral_sign(y_robot)
+        if sign > 0:
+            return 1
+        if sign < 0:
+            return -1
+        return 0
 
-        Returns:
-            [(waypoint_name, waypoint_index, wp_x, wp_y), ...]
-        """
-        # 收集waypoint坐标，计算十字中心
-        wp_coords = []
-        for name in visible_waypoint_names:
-            wp = self.bed_waypoints.get(name)
-            if wp:
-                wp_coords.append((name, wp['x'], wp['y'], wp['index']))
+    def _forward_distance(self, x, y, patrol_pose):
+        dx = x - patrol_pose['x']
+        dy = y - patrol_pose['y']
+        pyaw = patrol_pose['yaw']
+        return dx * np.cos(pyaw) + dy * np.sin(pyaw)
 
-        if not wp_coords:
-            return [None] * len(detection_map_points)
+    def _det_forward(self, map_point, patrol_pose):
+        if map_point is None:
+            return float('inf')
+        if len(map_point) >= 4:
+            return map_point[3]
+        return self._forward_distance(map_point[0], map_point[1], patrol_pose)
 
-        cx = sum(w[1] for w in wp_coords) / len(wp_coords)
-        cy = sum(w[2] for w in wp_coords) / len(wp_coords)
-        self.get_logger().info(f'象限匹配: 十字中心=({cx:.3f},{cy:.3f}), {len(wp_coords)}个waypoint')
+    def _marker_color(self, marker, r, g, b, a=1.0):
+        marker.color.r = float(r)
+        marker.color.g = float(g)
+        marker.color.b = float(b)
+        marker.color.a = float(a)
 
-        # waypoint按象限分组: key=(qx,qy), 0=左/下, 1=右/上
-        wp_quadrants = {}
-        for name, wx, wy, wp_idx in wp_coords:
-            key = (1 if wx >= cx else 0, 1 if wy >= cy else 0)
-            if key not in wp_quadrants:
-                wp_quadrants[key] = []
-            wp_quadrants[key].append((name, wp_idx, wx, wy))
-
-        results = []
-        used_quadrants = set()
-
-        for entry in detection_map_points:
-            if entry is None:
-                results.append(None)
-                self.get_logger().info('象限匹配: 深度无效，跳过此检测框')
-                continue
-
-            det_x, det_y = entry
-            det_key = (1 if det_x >= cx else 0, 1 if det_y >= cy else 0)
-
-            # 同象限匹配
-            candidates = wp_quadrants.get(det_key, [])
-            available = [w for w in candidates if det_key not in used_quadrants]
-
-            if available:
-                name, wp_idx, wx, wy = available[0]
-                used_quadrants.add(det_key)
-                results.append((name, wp_idx, wx, wy))
-                qname = {(1, 1): '右上', (0, 1): '左上', (0, 0): '左下', (1, 0): '右下'}
-                dist = np.sqrt((det_x - wx) ** 2 + (det_y - wy) ** 2)
-                self.get_logger().info(
-                    f'象限匹配: det({det_x:.3f},{det_y:.3f}) [{qname.get(det_key, "?")}] '
-                    f'→ {name} (dist={dist:.3f}m)'
-                )
-            else:
-                # 回退：跨象限最近邻
-                best_name = best_idx = None
-                best_wx = best_wy = 0.0
-                best_dist = float('inf')
-                best_key = None
-                for qkey, wlist in wp_quadrants.items():
-                    if qkey in used_quadrants:
-                        continue
-                    for name, wp_idx, wx, wy in wlist:
-                        d = np.sqrt((det_x - wx) ** 2 + (det_y - wy) ** 2)
-                        if d < best_dist:
-                            best_dist = d
-                            best_name, best_idx = name, wp_idx
-                            best_wx, best_wy = wx, wy
-                            best_key = qkey
-                if best_name is not None:
-                    used_quadrants.add(best_key)
-                    results.append((best_name, best_idx, best_wx, best_wy))
-                    self.get_logger().info(
-                        f'象限匹配(回退): det({det_x:.3f},{det_y:.3f}) '
-                        f'→ {best_name} (dist={best_dist:.3f}m)'
-                    )
-                else:
-                    results.append(None)
-                    self.get_logger().warn(
-                        f'象限匹配: det({det_x:.3f},{det_y:.3f}) 无可用的waypoint'
-                    )
-
-        return results
-
-    def _publish_debug_markers(self, patrol_id, detection_map_points, waypoint_matches, visible_names):
-        """发布RViz Marker：巡诊点(绿色)、床位waypoint(蓝色)、检测点(红色=未匹配/绿色=已匹配)"""
+    def _publish_debug_markers(self, patrol_id, bed_slots, prepared, matches):
+        """发布 RViz 标记：巡诊点、床位槽位、检测点（按槽位配色）。"""
         marker_array = MarkerArray()
         now = self.get_clock().now().to_msg()
 
-        # ---- 巡诊点：大绿色球 ----
+        clear = Marker()
+        clear.header.frame_id = 'map'
+        clear.header.stamp = now
+        clear.action = Marker.DELETEALL
+        marker_array.markers.append(clear)
+
         patrol_name = f'patrol_{patrol_id}'
         patrol_pose = self._patrol_points.get(patrol_name)
         if patrol_pose:
+            px, py, pyaw = patrol_pose['x'], patrol_pose['y'], patrol_pose['yaw']
             m = Marker()
             m.header.frame_id = 'map'
             m.header.stamp = now
@@ -676,255 +900,261 @@ class BedDetectionNode(Node):
             m.id = patrol_id
             m.type = Marker.SPHERE
             m.action = Marker.ADD
-            m.pose.position.x = patrol_pose['x']
-            m.pose.position.y = patrol_pose['y']
-            m.pose.position.z = 0.3
-            m.scale.x = m.scale.y = m.scale.z = 0.3
-            m.color.a = 1.0
-            m.color.g = 1.0
+            m.pose.position.x = px
+            m.pose.position.y = py
+            m.pose.position.z = 0.12
+            m.scale.x = m.scale.y = m.scale.z = 0.12
+            self._marker_color(m, 0.1, 1.0, 0.1)
             marker_array.markers.append(m)
 
-            # 巡诊点文字
-            m2 = Marker()
-            m2.header.frame_id = 'map'; m2.header.stamp = now
-            m2.ns = 'patrol_label'; m2.id = patrol_id
-            m2.type = Marker.TEXT_VIEW_FACING; m2.action = Marker.ADD
-            m2.pose.position.x = patrol_pose['x']; m2.pose.position.y = patrol_pose['y']
-            m2.pose.position.z = 0.6
-            m2.scale.z = 0.2
-            m2.color.a = 1.0; m2.color.g = 1.0
-            m2.text = f'patrol_{patrol_id}'
-            marker_array.markers.append(m2)
+            arrow = Marker()
+            arrow.header.frame_id = 'map'
+            arrow.header.stamp = now
+            arrow.ns = 'patrol_heading'
+            arrow.id = patrol_id
+            arrow.type = Marker.ARROW
+            arrow.action = Marker.ADD
+            arrow.pose.position.x = px
+            arrow.pose.position.y = py
+            arrow.pose.position.z = 0.12
+            arrow.pose.orientation.z = np.sin(pyaw / 2.0)
+            arrow.pose.orientation.w = np.cos(pyaw / 2.0)
+            arrow.scale.x = 0.35
+            arrow.scale.y = 0.06
+            arrow.scale.z = 0.06
+            self._marker_color(arrow, 0.1, 1.0, 0.1)
+            marker_array.markers.append(arrow)
 
-        # ---- 床位waypoint：蓝色方块 ----
-        for i, name in enumerate(visible_names):
-            wp = self.bed_waypoints.get(name)
-            if wp is None:
-                continue
+            label = Marker()
+            label.header.frame_id = 'map'
+            label.header.stamp = now
+            label.ns = 'patrol_label'
+            label.id = patrol_id
+            label.type = Marker.TEXT_VIEW_FACING
+            label.action = Marker.ADD
+            label.pose.position.x = px
+            label.pose.position.y = py
+            label.pose.position.z = 0.28
+            label.scale.z = 0.09
+            self._marker_color(label, 0.1, 1.0, 0.1)
+            label.text = f'patrol_{patrol_id}'
+            marker_array.markers.append(label)
+
+        for bed in bed_slots:
+            slot = bed['slot']
+            r, g, b = _BED_MARKER_COLORS[slot % len(_BED_MARKER_COLORS)]
             m = Marker()
-            m.header.frame_id = 'map'; m.header.stamp = now
-            m.ns = 'bed_wp'; m.id = i
-            m.type = Marker.CUBE; m.action = Marker.ADD
-            m.pose.position.x = wp['x']; m.pose.position.y = wp['y']
-            m.pose.position.z = 0.15
-            m.scale.x = m.scale.y = m.scale.z = 0.25
-            m.color.a = 1.0; m.color.b = 1.0
+            m.header.frame_id = 'map'
+            m.header.stamp = now
+            m.ns = 'bed_slot'
+            m.id = slot
+            m.type = Marker.CYLINDER
+            m.action = Marker.ADD
+            m.pose.position.x = bed['x']
+            m.pose.position.y = bed['y']
+            m.pose.position.z = 0.06
+            m.scale.x = 0.14
+            m.scale.y = 0.14
+            m.scale.z = 0.03
+            self._marker_color(m, r, g, b, 0.85)
             marker_array.markers.append(m)
 
-            # 文字
-            m2 = Marker()
-            m2.header.frame_id = 'map'; m2.header.stamp = now
-            m2.ns = 'bed_label'; m2.id = i
-            m2.type = Marker.TEXT_VIEW_FACING; m2.action = Marker.ADD
-            m2.pose.position.x = wp['x']; m2.pose.position.y = wp['y']
-            m2.pose.position.z = 0.4
-            m2.scale.z = 0.2
-            m2.color.a = 1.0; m2.color.b = 1.0
-            m2.text = f'{name} (idx={wp["index"]})'
-            marker_array.markers.append(m2)
+            label = Marker()
+            label.header.frame_id = 'map'
+            label.header.stamp = now
+            label.ns = 'bed_label'
+            label.id = slot
+            label.type = Marker.TEXT_VIEW_FACING
+            label.action = Marker.ADD
+            label.pose.position.x = bed['x']
+            label.pose.position.y = bed['y']
+            label.pose.position.z = 0.18
+            label.scale.z = 0.08
+            self._marker_color(label, r, g, b)
+            label.text = f'{bed["name"]} id={bed["bed_id"]}'
+            marker_array.markers.append(label)
 
-        # ---- 检测到的点 ----
-        if detection_map_points:
-            for i, (det_point, match) in enumerate(zip(detection_map_points, waypoint_matches or [])):
-                if det_point is None:
-                    continue
-                det_x, det_y = det_point
-                matched = match is not None
-
+        for i, (item, bed) in enumerate(zip(prepared, matches)):
+            pt = item['map_point']
+            if pt is None:
+                continue
+            det_x, det_y = self._map_point_xy(pt)
+            if bed is None:
                 m = Marker()
-                m.header.frame_id = 'map'; m.header.stamp = now
-                m.ns = 'detection'; m.id = i
-                m.type = Marker.SPHERE; m.action = Marker.ADD
-                m.pose.position.x = det_x; m.pose.position.y = det_y
-                m.pose.position.z = 0.1
-                m.scale.x = m.scale.y = m.scale.z = 0.2
-                m.color.a = 1.0
-                if matched:
-                    m.color.g = 1.0  # 绿色=匹配成功
-                else:
-                    m.color.r = 1.0  # 红色=未匹配
+                m.header.frame_id = 'map'
+                m.header.stamp = now
+                m.ns = 'detection'
+                m.id = i
+                m.type = Marker.SPHERE
+                m.action = Marker.ADD
+                m.pose.position.x = det_x
+                m.pose.position.y = det_y
+                m.pose.position.z = 0.08
+                m.scale.x = m.scale.y = m.scale.z = 0.08
+                self._marker_color(m, 1.0, 0.2, 0.2)
                 marker_array.markers.append(m)
+                continue
 
-                # 连到匹配waypoint的线
-                if matched:
-                    wp_name, wp_index, wp_x, wp_y = match
-                    line = Marker()
-                    line.header.frame_id = 'map'; line.header.stamp = now
-                    line.ns = 'match_line'; line.id = i
-                    line.type = Marker.LINE_STRIP; line.action = Marker.ADD
-                    line.pose.orientation.w = 1.0
-                    line.scale.x = 0.03
-                    line.color.a = 0.7; line.color.g = 0.8; line.color.b = 0.3
-                    line.points = [
-                        Point(x=det_x, y=det_y, z=0.05),
-                        Point(x=wp_x, y=wp_y, z=0.05),
-                    ]
-                    marker_array.markers.append(line)
+            slot = bed['slot']
+            r, g, b = _BED_MARKER_COLORS[slot % len(_BED_MARKER_COLORS)]
+            m = Marker()
+            m.header.frame_id = 'map'
+            m.header.stamp = now
+            m.ns = 'detection'
+            m.id = i
+            m.type = Marker.SPHERE
+            m.action = Marker.ADD
+            m.pose.position.x = det_x
+            m.pose.position.y = det_y
+            m.pose.position.z = 0.08
+            m.scale.x = m.scale.y = m.scale.z = 0.09
+            self._marker_color(m, r, g, b)
+            marker_array.markers.append(m)
+
+            line = Marker()
+            line.header.frame_id = 'map'
+            line.header.stamp = now
+            line.ns = 'match_line'
+            line.id = i
+            line.type = Marker.LINE_STRIP
+            line.action = Marker.ADD
+            line.pose.orientation.w = 1.0
+            line.scale.x = 0.012
+            self._marker_color(line, r, g, b, 0.7)
+            line.points = [
+                Point(x=det_x, y=det_y, z=0.04),
+                Point(x=bed['x'], y=bed['y'], z=0.04),
+            ]
+            marker_array.markers.append(line)
+
+            label = Marker()
+            label.header.frame_id = 'map'
+            label.header.stamp = now
+            label.ns = 'det_label'
+            label.id = i
+            label.type = Marker.TEXT_VIEW_FACING
+            label.action = Marker.ADD
+            label.pose.position.x = det_x
+            label.pose.position.y = det_y
+            label.pose.position.z = 0.14
+            label.scale.z = 0.07
+            self._marker_color(label, r, g, b)
+            label.text = f'{bed["name"]}({bed["bed_id"]})'
+            marker_array.markers.append(label)
 
         self.marker_pub.publish(marker_array)
 
     def _handle_area_mode(self, request, response):
-        """
-        Area模式处理逻辑
-        深度可用时：使用空间匹配（像素→3D→TF→map→最近邻waypoint）
-        深度不可用时：回退到patrol_bed_mapping.json索引映射
-        """
+        """Area 模式：在巡诊点槽位内匹配床位，漏检时仅输出已识别结果。"""
         self._switch_camera_mode('area')
         patrol_id = request.area_bed_id
         self.get_logger().info(f'开始Area模式检测, 巡诊点ID: {patrol_id}')
 
-        # 使用YOLOv8检测所有床位
-        bed_detections = self.detect_beds_with_yolo(self.current_image)
+        bed_slots = self._get_patrol_bed_slots(patrol_id)
+        if not bed_slots:
+            self.get_logger().warn(f'巡诊点 {patrol_id} 未配置床位槽位')
+            response.is_anomaly = False
+            response.details = f'No bed slots for patrol {patrol_id}'
+            response.bed_ids = []
+            response.urgencies = []
+            return response
 
+        allowed_bed_ids = {slot['bed_id'] for slot in bed_slots}
+        self.get_logger().info(
+            f'巡诊点{patrol_id}床位槽位: ' +
+            ', '.join(f'{s["name"]}(id={s["bed_id"]})' for s in bed_slots)
+        )
+
+        bed_detections = self.detect_beds_with_yolo(self.current_image)
         if not bed_detections:
             self.get_logger().warn('未检测到任何床位')
             response.is_anomaly = False
             response.details = "No beds detected"
             response.bed_ids = []
             response.urgencies = []
+            self._publish_debug_markers(patrol_id, bed_slots, [], [])
             return response
 
-        # 按置信度降序排序
-        bed_detections.sort(key=lambda d: d['confidence'], reverse=True)
-
-        # 确定该巡诊点期望的床位数N
-        visible_waypoints = self.waypoint_config.get('patrol_points', [])
-        visible_names = []
-        for pt in visible_waypoints:
-            if pt.get('patrol_id') == patrol_id:
-                visible_names = pt.get('bed_waypoints', [])
-                break
-        max_expected = len(visible_names) if visible_names else len(
-            self.patrol_bed_map.get(patrol_id, {})
+        prepared, bed_slots = self._prepare_detections(bed_detections, patrol_id)
+        self.get_logger().info(
+            f'YOLO检测 {len(bed_detections)} 个, 巡诊点槽位 {len(bed_slots)} 个, '
+            f'参与匹配 {len(prepared)} 个'
         )
 
-        if max_expected > 0:
-            bed_detections = bed_detections[:max_expected]
+        matches = self._assign_beds(prepared, bed_slots, patrol_id)
+        self._publish_debug_markers(patrol_id, bed_slots, prepared, matches)
 
-        self.get_logger().info(f'处理 {len(bed_detections)} 个床位 (期望 {max_expected})')
-
-        # ==================== 深度空间匹配 ====================
-        depth_matching_used = False
-        waypoint_matches = None
-
-        if (self.use_depth_matching and self.depth_received
-                and self.camera_intrinsics is not None and visible_names
-                and self.bed_waypoints):
-            self.get_logger().info('使用深度空间匹配模式')
-            depth_matching_used = True
-            detection_map_points = []
-
-            for detection in bed_detections:
-                x1, y1, x2, y2 = detection['bbox']
-                cx_pixel = int((x1 + x2) / 2)
-                cy_pixel = int((y1 + y2) / 2)
-                map_point = self._pixel_to_map_point(cx_pixel, cy_pixel, patrol_id)
-                if map_point is not None:
-                    detection_map_points.append(map_point)
-                else:
-                    detection_map_points.append(None)
-
-            waypoint_matches = self._match_detections_to_waypoints(
-                detection_map_points, visible_names
-            )
-        else:
-            self.get_logger().info('使用索引映射模式（无深度/模拟相机）')
-            detection_map_points = []
-            waypoint_matches = []
-
-        # 发布RViz标记（不管哪种模式都发送巡诊点和床位waypoint）
-        self._publish_debug_markers(patrol_id, detection_map_points,
-                                    waypoint_matches, visible_names)
-
-        # ==================== CLIP判断 ====================
         occupied_beds = []
         urgencies = []
+        for item, bed in zip(prepared, matches):
+            if bed is None:
+                continue
+            bed_id = bed['bed_id']
+            if bed_id not in allowed_bed_ids:
+                self.get_logger().warn(f'忽略越界床位编号: {bed_id}')
+                continue
 
-        for i, detection in enumerate(bed_detections):
-            bbox = detection['bbox']
-            confidence = detection['confidence']
-            x1, y1, x2, y2 = bbox
+            det = item['det']
+            x1, y1, x2, y2 = det['bbox']
             bed_image = self.current_image[y1:y2, x1:x2]
-
             if bed_image.size == 0:
                 continue
 
             is_person, person_score = self.detect_person_with_clip(bed_image)
-
             if not is_person:
                 continue
 
-            if depth_matching_used and waypoint_matches is not None:
-                match = waypoint_matches[i] if i < len(waypoint_matches) else None
-                if match is None:
-                    self.get_logger().info(
-                        f'检测框{i}(conf={confidence:.3f})CLIP判定有人，但空间匹配失败，丢弃'
-                    )
-                    continue
-                wp_name, wp_index, wp_x, wp_y = match
-                bed_id = wp_index
-                self.get_logger().info(
-                    f'{wp_name}(index={bed_id}) 有人, CLIP置信度: {person_score:.3f}, '
-                    f'YOLO置信度: {confidence:.3f}'
-                )
-            else:
-                bed_id = self._get_bed_id(patrol_id, i)
-                self.get_logger().info(
-                    f'床位 {bed_id} 有人, CLIP置信度: {person_score:.3f}, '
-                    f'YOLO置信度: {confidence:.3f}'
-                )
-
             occupied_beds.append(bed_id)
-            urgency = 1 if person_score > 0.7 else 0
-            urgencies.append(urgency)
+            urgencies.append(1 if person_score > 0.7 else 0)
+            self.get_logger().info(
+                f'{bed["name"]}(bed_id={bed_id}) 有人, CLIP={person_score:.3f}, '
+                f'YOLO={det["confidence"]:.3f}'
+            )
 
         response.is_anomaly = len(occupied_beds) > 0
-        response.details = f"Detected {len(occupied_beds)} occupied beds out of {len(bed_detections)} total beds"
+        response.details = (
+            f'Patrol {patrol_id}: {len(occupied_beds)} occupied / '
+            f'{len(prepared)} detected / {len(bed_slots)} slots'
+        )
         response.bed_ids = occupied_beds
         response.urgencies = urgencies
 
         self.get_logger().info(
-            f'Area模式检测完成: {len(occupied_beds)} 个有人床位 -> {occupied_beds}'
+            f'Area模式完成: 有人床位 {occupied_beds} (允许范围 {sorted(allowed_bed_ids)})'
         )
 
         if self.publish_debug_image:
-            self._publish_debug_image(self.current_image, bed_detections,
-                                      occupied_beds, waypoint_matches, patrol_id)
+            self._publish_debug_image(prepared, matches, occupied_beds)
 
         return response
 
-    def _publish_debug_image(self, image, detections, occupied_beds, waypoint_matches, patrol_id):
-        """绘制YOLO检测框和床位标签，深度模式下显示实际匹配的waypoint名称"""
-        debug_img = image.copy()
-        for i, detection in enumerate(detections):
-            x1, y1, x2, y2 = detection['bbox']
-            conf = detection['confidence']
+    def _publish_debug_image(self, prepared, matches, occupied_beds):
+        """绘制检测框，颜色与槽位一致。"""
+        debug_img = self.current_image.copy()
+        for item, bed in zip(prepared, matches):
+            det = item['det']
+            x1, y1, x2, y2 = det['bbox']
+            conf = det['confidence']
 
-            # 深度匹配模式：使用实际匹配的waypoint名称
-            if waypoint_matches and i < len(waypoint_matches) and waypoint_matches[i] is not None:
-                wp_name, wp_index, wp_x, wp_y = waypoint_matches[i]
-                bed_label = f'{wp_name}(idx={wp_index})'
-                is_occupied = wp_index in occupied_beds
+            if bed is None:
+                color = (0, 0, 255)
+                label = f'unmatched {conf:.2f}'
             else:
-                # 索引映射模式：回退到旧方法
-                bed_id = self._get_bed_id(patrol_id, i)
-                bed_label = f'Bed {bed_id}'
-                is_occupied = bed_id in occupied_beds
-
-            if is_occupied:
-                color = (0, 255, 0)    # 绿色：有人
-                label = f'{bed_label} (OCCUPIED) {conf:.2f}'
-            else:
-                color = (0, 0, 255)    # 红色：无人
-                label = f'{bed_label} (empty) {conf:.2f}'
+                slot = bed['slot']
+                r, g, b = _BED_MARKER_COLORS[slot % len(_BED_MARKER_COLORS)]
+                color = (int(b * 255), int(g * 255), int(r * 255))
+                bed_id = bed['bed_id']
+                status = 'OCCUPIED' if bed_id in occupied_beds else 'empty'
+                label = f'{bed["name"]}({bed_id}) {status} {conf:.2f}'
 
             cv2.rectangle(debug_img, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(debug_img, label, (x1, y1 - 10),
+            cv2.putText(debug_img, label, (x1, max(y1 - 8, 12)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
         try:
-            debug_msg = self.bridge.cv2_to_imgmsg(debug_img, encoding='bgr8')
-            self.debug_image_pub.publish(debug_msg)
+            self.debug_image_pub.publish(
+                self.bridge.cv2_to_imgmsg(debug_img, encoding='bgr8')
+            )
         except Exception as e:
             self.get_logger().warn(f'发布调试图像失败: {e}')
 
