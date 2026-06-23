@@ -46,17 +46,17 @@ xjrobot_bridge_node:
         index: 0
         name: corridor_left_mid
         frame_id: map
-        x: 4.1
-        y: 0.98
-        yaw: -1.28
+        x: -0.732
+        y: -0.168
+        yaw: 1.629
         
       patrol_1:
         index: 1
         name: corridor_right_mid
         frame_id: map
-        x: 4.1
-        y: 0.98
-        yaw: -1.28
+        x: -0.732
+        y: -0.168
+        yaw: 1.629
 
       bed_1:
         index: 2

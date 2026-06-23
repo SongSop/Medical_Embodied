@@ -4,8 +4,8 @@ project(xjrobot_bringup)
 find_package(ament_cmake REQUIRED)
 
 install(
-  FILES launch/robot.launch.py
-  DESTINATION share/${PROJECT_NAME}/launch
+  DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
 )
 
 ament_package()

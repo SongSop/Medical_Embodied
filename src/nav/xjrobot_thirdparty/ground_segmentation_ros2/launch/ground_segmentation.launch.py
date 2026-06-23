@@ -41,7 +41,9 @@ def launch_setup(context, *args, **kwargs):
         parameters=[
             parameters_file,
             {
-                "use_sim_time": LaunchConfiguration("sim")
+                "use_sim_time": LaunchConfiguration("sim"),
+                "robot_frame": LaunchConfiguration("robot_frame"),
+                "output_frame_id": LaunchConfiguration("output_frame_id"),
             }
         ],
         remappings=[
@@ -80,6 +82,22 @@ def generate_launch_description():
             "sim",
             default_value="false",
             description="Use simulation time (set true for Gazebo / bag playback)",
+        )
+    )
+
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "robot_frame",
+            default_value="lidar_3d_link",
+            description="Target frame used for ground segmentation TF lookup",
+        )
+    )
+
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "output_frame_id",
+            default_value="lidar_3d_link",
+            description="Frame id used for published segmented point clouds",
         )
     )
 

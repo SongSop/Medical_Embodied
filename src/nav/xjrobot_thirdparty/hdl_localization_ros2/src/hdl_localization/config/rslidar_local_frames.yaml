@@ -1,0 +1,17 @@
+frames:
+  map: "Global map frame"
+  rslidar: "RoboSense point cloud frame_id (read from rslidar_sdk ros_frame_id)"
+  base_link: "Robot base frame"
+
+relations:
+  - parent: map
+    child: rslidar
+    publisher: hdl_localization
+    type: dynamic
+    note: "Published by hdl_localization_rslidar_stable.launch.py with robot_odom_frame_id=rslidar."
+  - parent: rslidar
+    child: base_link
+    publisher: hdl_localization_rslidar_stable.launch.py
+    type: static
+    xyz: [-0.126, 0.0, 0.0]
+    rpy: [0.0, 0.0, 0.0]

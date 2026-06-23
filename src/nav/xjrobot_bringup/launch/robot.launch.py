@@ -9,8 +9,8 @@ from launch_ros.substitutions import FindPackageShare
 # 实机默认地图：
 # - DEFAULT_MAP_PATH：Nav2 使用的 2D 栅格地图 yaml
 # - DEFAULT_PCD_MAP_PATH：FastLIO / 全局重定位使用的 3D PCD 地图
-DEFAULT_MAP_PATH = "/home/medical/maps/map_0617.yaml"
-DEFAULT_PCD_MAP_PATH = "/home/medical/maps/map_0617.pcd"
+DEFAULT_MAP_PATH = "/home/medical/maps/map_0622.yaml"
+DEFAULT_PCD_MAP_PATH = "/home/medical/maps/map_0622.pcd"
 
 
 def generate_launch_description():
@@ -21,6 +21,9 @@ def generate_launch_description():
     )
     localization_launch = PathJoinSubstitution(
         [FindPackageShare("xjrobot_localization"), "launch", "localization.launch.py"]
+    )
+    localization_hdl_launch = PathJoinSubstitution(
+        [FindPackageShare("xjrobot_localization"), "launch", "localization_hdl.launch.py"]
     )
     navigation_rpp_launch = PathJoinSubstitution(
         [FindPackageShare("xjrobot_navigation"), "launch", "navigation_rpp.launch.py"]
@@ -40,6 +43,7 @@ def generate_launch_description():
 
     use_sim_time = LaunchConfiguration("use_sim_time")
     controller = LaunchConfiguration("controller")
+    localization_backend = LaunchConfiguration("localization_backend")
 
     # E1R 雷达与 IMU 驱动链路：
     # rslidar_sdk、fdlink IMU、点云转换由 fast_lio/rslidar_mapping.launch.py 维护。
@@ -72,9 +76,19 @@ def generate_launch_description():
     # 3D 定位链路：
     # FastLIO、global localization、map->odom 融合和 PCD 地图发布都由 localization.launch.py 维护。
     # pcd_map 在这里作为总入口参数传入，覆盖 localization 配置文件里的默认 map_file_path。
-    localization_include = IncludeLaunchDescription(
+    localization_fastlio_include = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(localization_launch),
-        condition=IfCondition(LaunchConfiguration("launch_localization")),
+        condition=IfCondition(
+            PythonExpression(
+                [
+                    "'",
+                    LaunchConfiguration("launch_localization"),
+                    "' == 'true' and '",
+                    localization_backend,
+                    "' == 'fastlio'",
+                ]
+            )
+        ),
         launch_arguments={
             "config_file": LaunchConfiguration("localization_config"),
             "pcd_map": LaunchConfiguration("pcd_map"),
@@ -87,6 +101,40 @@ def generate_launch_description():
             "initial_pose_y": LaunchConfiguration("initial_pose_y"),
             "initial_pose_yaw": LaunchConfiguration("initial_pose_yaw"),
             "initial_pose_delay": LaunchConfiguration("initial_pose_delay"),
+        }.items(),
+    )
+
+    localization_hdl_include = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(localization_hdl_launch),
+        condition=IfCondition(
+            PythonExpression(
+                [
+                    "'",
+                    LaunchConfiguration("launch_localization"),
+                    "' == 'true' and '",
+                    localization_backend,
+                    "' == 'hdl'",
+                ]
+            )
+        ),
+        launch_arguments={
+            "use_sim_time": use_sim_time,
+            "pcd_map": LaunchConfiguration("pcd_map"),
+            "rviz": LaunchConfiguration("localization_rviz"),
+            "robot_odom_frame_id": LaunchConfiguration("robot_odom_frame_id"),
+            "odom_child_frame_id": LaunchConfiguration("odom_child_frame_id"),
+            "publish_initial_pose": LaunchConfiguration("publish_initial_pose"),
+            "initial_pose_x": LaunchConfiguration("initial_pose_x"),
+            "initial_pose_y": LaunchConfiguration("initial_pose_y"),
+            "initial_pose_yaw": LaunchConfiguration("initial_pose_yaw"),
+            "initial_pose_delay": LaunchConfiguration("initial_pose_delay"),
+            "base_to_lidar_x": LaunchConfiguration("base_to_lidar_x"),
+            "base_to_lidar_y": LaunchConfiguration("base_to_lidar_y"),
+            "base_to_lidar_z": LaunchConfiguration("base_to_lidar_z"),
+            "base_to_lidar_qx": LaunchConfiguration("base_to_lidar_qx"),
+            "base_to_lidar_qy": LaunchConfiguration("base_to_lidar_qy"),
+            "base_to_lidar_qz": LaunchConfiguration("base_to_lidar_qz"),
+            "base_to_lidar_qw": LaunchConfiguration("base_to_lidar_qw"),
         }.items(),
     )
 
@@ -161,6 +209,57 @@ def generate_launch_description():
                 "localization_config",
                 default_value="e1r.yaml",
                 description="xjrobot_localization config file name under its config directory.",
+            ),
+            DeclareLaunchArgument(
+                "localization_backend",
+                default_value="fastlio",
+                choices=["fastlio", "hdl"],
+                description="Localization backend profile: fastlio or hdl.",
+            ),
+            DeclareLaunchArgument(
+                "base_to_lidar_x",
+                default_value="0.17262",
+                description="For HDL backend: base_link->rslidar translation x (m).",
+            ),
+            DeclareLaunchArgument(
+                "base_to_lidar_y",
+                default_value="0.0",
+                description="For HDL backend: base_link->rslidar translation y (m).",
+            ),
+            DeclareLaunchArgument(
+                "base_to_lidar_z",
+                default_value="0.0",
+                description="For HDL backend: base_link->rslidar translation z (m).",
+            ),
+            DeclareLaunchArgument(
+                "base_to_lidar_qx",
+                default_value="0.0",
+                description="For HDL backend: base_link->rslidar quaternion qx.",
+            ),
+            DeclareLaunchArgument(
+                "base_to_lidar_qy",
+                default_value="0.0",
+                description="For HDL backend: base_link->rslidar quaternion qy.",
+            ),
+            DeclareLaunchArgument(
+                "base_to_lidar_qz",
+                default_value="0.0",
+                description="For HDL backend: base_link->rslidar quaternion qz.",
+            ),
+            DeclareLaunchArgument(
+                "base_to_lidar_qw",
+                default_value="1.0",
+                description="For HDL backend: base_link->rslidar quaternion qw.",
+            ),
+            DeclareLaunchArgument(
+                "robot_odom_frame_id",
+                default_value="odom",
+                description="For HDL backend: odometry frame id.",
+            ),
+            DeclareLaunchArgument(
+                "odom_child_frame_id",
+                default_value="base_link",
+                description="For HDL backend: odometry child frame id.",
             ),
             DeclareLaunchArgument(
                 "waypoints_file",
@@ -275,7 +374,8 @@ def generate_launch_description():
             ),
             rslidar_mapping_include,
             base_include,
-            localization_include,
+            localization_fastlio_include,
+            localization_hdl_include,
             # Nav2 依赖 /tf、/odom、/scan、map->odom 等链路。
             # 延迟启动能减少实机开机阶段的 TF / costmap 报警，让生命周期节点更稳。
             TimerAction(
