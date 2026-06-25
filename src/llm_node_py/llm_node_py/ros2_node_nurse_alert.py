@@ -1,4 +1,4 @@
-# 用来判断是否需要呼叫护士
+# 用来判断是否需要呼叫护士，以及用户是否想结束对话
 
 """
 2026-4-3 测试没啥问题
@@ -10,7 +10,7 @@
 ros2 service call /check_need_call_nurse llm_node_comm/srv/NurseAlert "{question: '我头痛、胸闷，呼吸急促'}"
 ros2 service call /check_need_call_nurse llm_node_comm/srv/NurseAlert "{question: '帮我叫护士.'}"
 ros2 service call /check_need_call_nurse llm_node_comm/srv/NurseAlert "{question: '我有点喘不过上来气.'}"
-ros2 service call /check_need_call_nurse llm_node_comm/srv/NurseAlert "{question: '我头痛、胸闷，呼吸急促'}"
+ros2 service call /check_need_call_nurse llm_node_comm/srv/NurseAlert "{question: '没什么事了，先这样吧'}"
 """
 
 
@@ -112,7 +112,7 @@ def load_dashscope_api_key() -> str:
 
 class NurseAlertService(Node):
     """
-    ROS2 Node 提供服务，用于判断是否需要呼叫护士
+    ROS2 Node 提供服务，用于判断是否需要呼叫护士，以及是否想结束对话
     """
 
     def __init__(self):
@@ -135,20 +135,22 @@ class NurseAlertService(Node):
                 "role": "system",
                 "content": (
                     "你是医院的护士助手，负责监测病人的对话内容。"
-                    "你不执行实际动作，只根据病人的描述判断是否需要呼叫护士，"
-                    "并给出原因。同时生成给患者的回复内容。"
-                    "回答格式必须是 JSON，包含三个字段："
-                    "如果不需要呼叫护士，reponse 字段输出为空，"
+                    "你不执行实际动作，只判断两件事：是否需要呼叫护士，"
+                    "以及用户是否想结束本次对话，并给出原因。"
+                    "同时生成给患者的回复内容。"
+                    "回答格式必须是 JSON，包含四个字段："
                     "need_call（bool，是否需要呼叫护士），"
+                    "need_end（bool，是否想结束对话），"
                     "reason（string，解释原因），"
-                    "response（string，给患者的回复内容）。"
+                    "response（string，给患者的回复内容；如果既不需要呼叫护士也不需要结束对话，则为空字符串）。"
                 ),
             },
             {
                 "role": "assistant",
                 "content": (
-                    "好的，在接下来的对话中我将根据输入的用户问题进行判断是否需要呼叫护士，"
-                    "并严格按照json格式进行输出，如果不需要呼叫护士那么我会把response设置为空。"
+                    "好的，在接下来的对话中我会同时判断是否需要呼叫护士、"
+                    "以及用户是否想结束对话，并严格按照 JSON 格式输出。"
+                    "如果两者都不是，response 为空字符串。"
                 ),
             },
             {
@@ -159,6 +161,7 @@ class NurseAlertService(Node):
                 "role": "assistant",
                 "content": (
                     '{"need_call": true, '
+                    '"need_end": false, '
                     '"reason": "患者出现胸闷和呼吸急促，属于可能紧急症状，需要立即通知护士。", '
                     '"response": "好的，我这就为您呼叫护士。"}'
                 ),
@@ -171,8 +174,9 @@ class NurseAlertService(Node):
                 "role": "assistant",
                 "content": (
                     '{"need_call": false, '
+                    '"need_end": false, '
                     '"reason": "这是日常咨询问题，不涉及紧急症状，不需要呼叫护士。", '
-                    '"response": "null"}'
+                    '"response": ""}'
                 ),
             },
             {
@@ -183,20 +187,35 @@ class NurseAlertService(Node):
                 "role": "assistant",
                 "content": (
                     '{"need_call": false, '
+                    '"need_end": false, '
                     '"reason": "患者的症状程度较轻，只需要自己采取缓解措施，不需要呼叫护士。", '
-                    '"response": "null"}'
+                    '"response": ""}'
                 ),
             },
             {
                 "role": "user",
-                "content": "你还是帮我叫护士吧。",
+                "content": "没什么事儿了，你走吧。",
             },
             {
                 "role": "assistant",
                 "content": (
-                    '{"need_call": true, '
-                    '"reason": "患者明确表明想要呼叫护士，需要立即通知护士。", '
-                    '"response": "好的，我立刻给您去叫护士。"}'
+                    '{"need_call": false, '
+                    '"need_end": true, '
+                    '"reason": "用户明确表示想结束聊天。", '
+                    '"response": "好的，那我们下次再聊。"}'
+                ),
+            },
+            {
+                "role": "user",
+                "content": "没事儿了，你滚蛋吧。",
+            },
+            {
+                "role": "assistant",
+                "content": (
+                    '{"need_call": false, '
+                    '"need_end": true, '
+                    '"reason": "用户明确表示不想见到我。", '
+                    '"response": "好的，那我们下次再聊。"}'
                 ),
             },
         ]
@@ -216,7 +235,7 @@ class NurseAlertService(Node):
         response: NurseAlert.Response,
     ) -> NurseAlert.Response:
         """
-        接收 NurseAlert 请求，返回是否需要呼叫护士
+        接收 NurseAlert 请求，返回是否需要呼叫护士，以及是否想结束对话
         """
         question = request.question
 
@@ -236,14 +255,16 @@ class NurseAlertService(Node):
             result = json.loads(reply_text)
 
             need_call = result.get("need_call", False)
+            need_end = result.get("need_end", False)
             reason = result.get("reason", "")
             response_text = result.get("response", "")
 
             self.get_logger().info(
-                f"Q: {question} | need_call: {need_call} | reason: {reason} | response: {response_text}"
+                f"Q: {question} | need_call: {need_call} | need_end: {need_end} | reason: {reason} | response: {response_text}"
             )
 
             response.need_call = need_call
+            response.need_end = need_end
             response.comment = reason
             response.response = response_text
             return response
@@ -251,6 +272,7 @@ class NurseAlertService(Node):
         except Exception as exc:
             self.get_logger().error(f"Error in nurse alert service: {exc}")
             response.need_call = False
+            response.need_end = False
             response.comment = "[Error] Failed to query LLM"
             response.response = ""
             return response

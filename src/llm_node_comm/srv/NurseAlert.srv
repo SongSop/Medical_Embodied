@@ -1,5 +1,6 @@
 string question
 ---
 bool need_call
+bool need_end
 string comment
 string response
