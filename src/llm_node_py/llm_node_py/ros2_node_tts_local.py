@@ -66,6 +66,9 @@ class LocalTtsServiceNode(Node):
             MODEL_PATH,
             device_map="cuda:0",
             dtype=torch.bfloat16,
+
+            # 使用 flash attention2 加速
+            attn_implementation="flash_attention_2",
         )
 
         self.service = self.create_service(
