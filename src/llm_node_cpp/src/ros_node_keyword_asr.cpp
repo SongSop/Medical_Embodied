@@ -338,7 +338,10 @@ namespace {
         //     }
         // }
 
-        // 判断是否需要呼叫护士
+        // 在进行后续判断前，先给出收到语音的反馈，不进行阻塞
+        call_oneshot_tts("小医听到了", false);
+
+        // 判断是否需要呼叫护士，以及用户是否想结束对话
         auto request = std::make_shared<llm_node_comm::srv::NurseAlert::Request>();
         // 填写 request
         request->question = res;
@@ -346,6 +349,7 @@ namespace {
         if (future.wait_for(std::chrono::seconds(30)) == std::future_status::ready) {
             const auto response = future.get();
             bool need_call = response->need_call;
+            bool need_end = response->need_end;
             std::string reason = response->comment;
             std::string response_text = response->response;
 
@@ -363,23 +367,6 @@ namespace {
                 return AsrStream::asrContinue;
             }
 
-            RCLCPP_INFO(node->get_logger(), "need_call: %s", need_call ? "true" : "false");
-            RCLCPP_INFO(node->get_logger(), "reason: %s", reason.c_str());
-            RCLCPP_INFO(node->get_logger(), "response: %s", response_text.c_str());
-        } else {
-            err_log("call /check_need_call_nurse timeout.");
-        }
-
-        // 判断用户是否想结束对话
-        auto end_request = std::make_shared<llm_node_comm::srv::EndSession::Request>();
-        end_request->question = res;
-        auto end_future = end_session_client->async_send_request(end_request);
-        if (end_future.wait_for(std::chrono::seconds(30)) == std::future_status::ready) {
-            const auto end_response = end_future.get();
-            bool need_end = end_response->need_end;
-            std::string reason = end_response->comment;
-            std::string response_text = end_response->response;
-
             if (need_end) {
                 sys_log("用户想要结束对话.");
 
@@ -390,15 +377,13 @@ namespace {
                 return AsrStream::asrContinue;
             }
 
+            RCLCPP_INFO(node->get_logger(), "need_call: %s", need_call ? "true" : "false");
             RCLCPP_INFO(node->get_logger(), "need_end: %s", need_end ? "true" : "false");
             RCLCPP_INFO(node->get_logger(), "reason: %s", reason.c_str());
             RCLCPP_INFO(node->get_logger(), "response: %s", response_text.c_str());
         } else {
-            err_log("call /check_end_dialog timeout.");
+            err_log("call /check_need_call_nurse timeout.");
         }
-
-        // 先发送一些套话
-        call_oneshot_tts("我听到了。", false);
 
         // 将识别到的问题发送给 question manager
         // 因为如果需要呼叫护士的话，那么就直接呼叫了，不用经过下面的 llm 了
