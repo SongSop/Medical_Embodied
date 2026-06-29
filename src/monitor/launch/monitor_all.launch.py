@@ -9,10 +9,10 @@ import os
 
 def generate_launch_description():
     """
-    一键启动：RealSense D455相机 + 床位检测 + 人脸识别
+    一键启动：L515相机 + 床位检测 + 人脸识别
 
     分步启动（推荐用于调试）：
-      ros2 launch monitor realsense_d455.launch.py
+      ros2 launch monitor l515_camera.launch.py
       ros2 launch monitor bed_detection.launch.py
       ros2 launch monitor face_identify.launch.py
 
@@ -36,26 +36,22 @@ def generate_launch_description():
             description='RGB图像话题名（mock相机需设为 /camera/rgb/image_raw）'
         ),
         DeclareLaunchArgument(
-            'enable_depth',
-            default_value='true',
-        ),
-        DeclareLaunchArgument(
-            'depth_profile',
-            default_value='640x480x30',
-        ),
-        DeclareLaunchArgument(
-            'color_profile',
-            default_value='640x480x30',
+            'l515_preset',
+            default_value='short_range',
+            description='L515 visual preset: short_range | no_ambient | low_ambient | max_range | default'
         ),
 
-        # ==================== 相机 ====================
+        # ==================== 相机 (L515 via librealsense2 C++) ====================
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
-                os.path.join(monitor_launch_dir, 'realsense_d455.launch.py')
+                os.path.join(monitor_launch_dir, 'l515_camera.launch.py')
             ),
             condition=UnlessCondition(
                 LaunchConfiguration('use_mock_camera')
             ),
+            launch_arguments={
+                'l515_preset': LaunchConfiguration('l515_preset'),
+            }.items(),
         ),
 
         # ==================== 床位检测 ====================

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 人脸识别服务节点
-通过可配置的相机话题获取图像（默认RealSense D455: /camera/camera/color/image_raw）
+通过可配置的相机话题获取图像（默认RealSense L515: /camera/camera/color/image_raw）
 """
 import os
 import time
@@ -40,7 +40,7 @@ class FaceIdentifyServer(Node):
         self.known_face_ids = []
         self.bridge = CvBridge()
 
-        # 订阅相机话题获取图像（通过参数配置，默认使用RealSense D455彩色图像话题）
+        # 订阅相机话题获取图像（通过参数配置，默认使用RealSense L515彩色图像话题）
         self.current_image = None
         self.image_received = False
         self.image_sub = self.create_subscription(
