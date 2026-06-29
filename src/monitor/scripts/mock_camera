@@ -1,0 +1,4 @@
+#!/usr/bin/env python3
+import sys
+from monitor.mock_camera import main
+sys.exit(main())

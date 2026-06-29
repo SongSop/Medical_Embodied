@@ -1,0 +1,4 @@
+#!/usr/bin/env python3
+import sys
+from monitor.anomaly_detect_server import main
+sys.exit(main())

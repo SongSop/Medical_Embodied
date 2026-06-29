@@ -1,0 +1,4 @@
+#!/usr/bin/env python3
+import sys
+from monitor.face_identify_server import main
+sys.exit(main())

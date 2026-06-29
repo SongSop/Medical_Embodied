@@ -8,7 +8,7 @@
   Bed模式:  检测指定床位是否有人(异常),返回is_anomaly
 
 服务接口: /detect_anomaly (继承自interfaces/DetectAnomaly.srv)
-相机话题: 通过camera_topic参数配置 (默认RealSense D455: /camera/camera/color/image_raw)
+相机话题: 通过camera_topic参数配置 (默认RealSense L515: /camera/camera/color/image_raw)
 """
 import os
 import json
@@ -191,7 +191,7 @@ class BedDetectionNode(Node):
         self.depth_received = False
         self.camera_intrinsics = None  # (fx, fy, cx, cy)
 
-        # 订阅相机话题（通过参数配置，默认使用RealSense D455彩色图像话题）
+        # 订阅相机话题（通过参数配置，默认使用RealSense L515彩色图像话题）
         self.image_sub = self.create_subscription(
             Image,
             self.camera_topic,
@@ -1105,6 +1105,7 @@ class BedDetectionNode(Node):
                 continue
 
             occupied_beds.append(bed_id)
+            # TODO：urgencies等级现在只由检测人的置信度决定，后期可能需要扩展clip的分类功能
             urgencies.append(1 if person_score > 0.7 else 0)
             self.get_logger().info(
                 f'{bed["name"]}(bed_id={bed_id}) 有人, CLIP={person_score:.3f}, '

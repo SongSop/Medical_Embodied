@@ -1,0 +1,4 @@
+#!/usr/bin/env python3
+import sys
+from monitor.monitor_mock_pub import main
+sys.exit(main())
