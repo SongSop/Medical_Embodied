@@ -46,78 +46,78 @@ xjrobot_bridge_node:
         index: 0
         name: corridor_left_mid
         frame_id: map
-        x: -0.732
-        y: -0.168
-        yaw: 1.629
+        x: 0.499
+        y: -0.894
+        yaw: 1.718
         
       patrol_1:
         index: 1
         name: corridor_right_mid
         frame_id: map
-        x: -0.732
-        y: -0.168
-        yaw: 1.629
+        x: 0.499
+        y: -0.894
+        yaw: 1.718
 
       bed_1:
         index: 2
         name: patrol_0_1
         frame_id: map
-        x: 4.16
-        y: -1.13
-        yaw: 0.0
+        x: 0.195
+        y: 1.156
+        yaw: 3.064
 
       bed_2:
         index: 3
         name: patrol_0_2
         frame_id: map
-        x: 4.95
-        y: -2.81
-        yaw: 0.0
+        x: 0.195
+        y: 3.426
+        yaw: 3.064
 
       bed_3:
         index: 4
         name: patrol_0_3
         frame_id: map
-        x: 4.16
-        y: -1.13
-        yaw: 3.14
+        x: 0.195
+        y: 1.156
+        yaw: -0.14
 
       bed_4:
         index: 5
         name: patrol_0_4
         frame_id: map
-        x: 4.95
-        y: -2.81
-        yaw: 3.14
+        x: 0.195
+        y: 3.426
+        yaw: -0.14
 
       bed_5:
         index: 6
         name: patrol_1_1
         frame_id: map
-        x: 4.16
-        y: -1.13
-        yaw: 0.0
+        x: 0.195
+        y: 1.156
+        yaw: 3.064
 
       bed_6:
         index: 7
         name: patrol_1_2
         frame_id: map
-        x: 4.95
-        y: -2.81
-        yaw: 0.0
+        x: 0.195
+        y: 3.426
+        yaw: 3.064
 
       bed_7:
         index: 8
         name: patrol_1_3
         frame_id: map
-        x: 4.16
-        y: -1.13
-        yaw: 3.14
+        x: 0.195
+        y: 1.156
+        yaw: -0.14
 
       bed_8:
         index: 9
         name: patrol_1_4
         frame_id: map
-        x: 4.95
-        y: -2.81
-        yaw: 3.14
+        x: 0.195
+        y: 3.426
+        yaw: -0.14

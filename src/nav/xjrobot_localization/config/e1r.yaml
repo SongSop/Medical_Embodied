@@ -7,7 +7,7 @@ laser_mapping:
         filter_size_map: 0.2
         cube_side_length: 1000.0
         runtime_pos_log_enable: false
-        map_file_path: "/home/medical/maps/map_0622.pcd"
+        map_file_path: "/home/medical/maps/map_0623.pcd"
 
         common:
             lid_topic:  "/rslidar_points_fastlio"

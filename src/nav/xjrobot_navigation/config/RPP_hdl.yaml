@@ -78,7 +78,7 @@ controller_server:
       angular_disengage_threshold: 0.3925 # 朝向误差小于该值后切回 RPP 跟踪
       forward_sampling_distance: 0.5     # 沿路径向前采样用于估计目标朝向的距离，m
       rotate_to_heading_angular_vel: 0.7 # 原地对齐路径朝向时的角速度，rad/s
-      max_angular_accel: 1.5             # 原地对齐时允许的最大角加速度，rad/s^2
+      max_angular_accel: 3.0             # 原地对齐时允许的最大角加速度，rad/s^2
       simulate_ahead_time: 1.0           # 旋转前向碰撞仿真时间，s
       rotate_to_goal_heading: true       # 到达目标位置后是否再对齐目标朝向
       rotate_to_heading_once: true       # 每个新目标只在起步时执行一次朝向对齐
@@ -140,7 +140,7 @@ local_costmap:
           data_type: "LaserScan"
           min_obstacle_height: -1.0
           max_obstacle_height: 2.0
-          observation_persistence: 5.0
+          observation_persistence: 2.0
           tf_filter_tolerance: 0.3
           marking: True
           clearing: True
