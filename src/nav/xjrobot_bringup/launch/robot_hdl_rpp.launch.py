@@ -6,7 +6,7 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 
 
-DEFAULT_MAP_PATH = "/home/medical/maps/map_0623.yaml"
+DEFAULT_MAP_PATH = "/home/medical/maps/lio_map_0630.yaml"
 
 
 def generate_launch_description():
@@ -30,7 +30,7 @@ def generate_launch_description():
         [FindPackageShare("xjrobot_bridge"), "launch", "xjrobot_bridge.launch.py"]
     )
     default_waypoints_file = PathJoinSubstitution(
-        [FindPackageShare("xjrobot_bridge"), "config", "waypoints.yaml"]
+        [FindPackageShare("xjrobot_bridge"), "config", "hdl_waypoints.yaml"]
     )
 
     use_sim_time = LaunchConfiguration("use_sim_time")

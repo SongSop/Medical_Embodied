@@ -144,6 +144,8 @@ def generate_launch_description():
                     ),
                     "imu_topic": LaunchConfiguration("ground_segmentation_imu_topic"),
                     "sim": LaunchConfiguration("use_sim_time"),
+                    # 显式固定导航帧，避免 rslidar rotate_imu 的 output_frame_id 泄漏到本节点。
+                    "output_frame_id": "lidar_3d_link",
                 }.items(),
             ),
             Node(

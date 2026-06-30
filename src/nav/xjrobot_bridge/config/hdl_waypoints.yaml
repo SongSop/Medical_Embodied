@@ -38,86 +38,86 @@ xjrobot_bridge_node:
         index: 100
         name: charge_staging
         frame_id: map
-        x: -0.056
-        y: -0.018
-        yaw: -1.52
+        x: 1.57
+        y: 0.22
+        yaw: -1.42
 
       patrol_0:
         index: 0
         name: corridor_left_mid
         frame_id: map
-        x: 3.21
-        y: 0.07
-        yaw: -1.44
+        x: 4.67
+        y: 0.37
+        yaw: -1.52
         
       patrol_1:
         index: 1
         name: corridor_right_mid
         frame_id: map
-        x: 3.21
-        y: 0.07
-        yaw: -1.44
+        x: 4.72
+        y: -1.48
+        yaw: 0.06
 
       bed_1:
         index: 2
         name: patrol_0_1
         frame_id: map
-        x: 3.34
-        y: -1.49
-        yaw: 0.125
+        x: 4.72
+        y: -1.48
+        yaw: 0.06
 
       bed_2:
         index: 3
         name: patrol_0_2
         frame_id: map
-        x: 3.44
-        y: -3.76
-        yaw: 0.125
+        x: 4.64
+        y: -3.70
+        yaw: 0.19
 
       bed_3:
         index: 4
         name: patrol_0_3
         frame_id: map
-        x: 3.34
-        y: -1.49
-        yaw: -3.0
+        x: 4.72
+        y: -1.48
+        yaw: -3.081
 
       bed_4:
         index: 5
         name: patrol_0_4
         frame_id: map
-        x: 3.44
-        y: -3.76
-        yaw: -3.0
+        x: 4.64
+        y: -3.70
+        yaw: -2.951
 
       bed_5:
         index: 6
         name: patrol_1_1
         frame_id: map
-        x: 3.34
-        y: -1.49
-        yaw: 0.125
+        x: 4.72
+        y: -1.48
+        yaw: 0.06
 
       bed_6:
         index: 7
         name: patrol_1_2
         frame_id: map
-        x: 3.44
-        y: -3.76
-        yaw: 0.125
+        x: 4.64
+        y: -3.70
+        yaw: 0.19
 
       bed_7:
         index: 8
         name: patrol_1_3
         frame_id: map
-        x: 3.34
-        y: -1.49
-        yaw: -3.0
+        x: 4.72
+        y: -1.48
+        yaw: -3.081
 
       bed_8:
         index: 9
         name: patrol_1_4
         frame_id: map
-        x: 3.44
-        y: -3.76
-        yaw: -3.0
+        x: 4.64
+        y: -3.70
+        yaw: -2.951

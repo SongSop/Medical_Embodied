@@ -1,0 +1,25 @@
+"""Launch emotion bridge node; parameters from config/emotion_bridge.yaml."""
+
+import os
+
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch_ros.actions import Node
+
+
+def generate_launch_description():
+    config = os.path.join(
+        get_package_share_directory('emotion'),
+        'config',
+        'emotion_bridge.yaml',
+    )
+
+    return LaunchDescription([
+        Node(
+            package='emotion',
+            executable='emotion_bridge_node',
+            name='emotion_bridge',
+            output='screen',
+            parameters=[config],
+        ),
+    ])

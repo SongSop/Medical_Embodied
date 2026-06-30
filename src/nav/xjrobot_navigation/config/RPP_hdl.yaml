@@ -66,8 +66,8 @@ controller_server:
     general_goal_checker:
       stateful: True                     # 到点后保持状态，减少振荡
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25            # 平面位置容差，m
-      yaw_goal_tolerance: 0.25           # 朝向容差，rad
+      xy_goal_tolerance: 0.1            # 平面位置容差，m
+      yaw_goal_tolerance: 0.1           # 朝向容差，rad
 
     FollowPath:
       # 采用 RotationShim + RPP 组合控制器
