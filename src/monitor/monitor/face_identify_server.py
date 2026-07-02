@@ -22,7 +22,7 @@ class FaceIdentifyServer(Node):
     def __init__(self):
         super().__init__('face_identify_server')
 
-        self.declare_parameter('max_recognition_attempts', 10)
+        self.declare_parameter('max_recognition_attempts', 5)
         self.declare_parameter('recognition_timeout', 10.0)
         self.declare_parameter('face_database_path', '')
         self.declare_parameter('camera_topic', '/camera/camera/color/image_raw')

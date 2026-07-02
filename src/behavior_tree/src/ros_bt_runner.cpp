@@ -582,7 +582,7 @@ public:
         auto req = std::make_shared<interfaces::srv::FaceIdentify::Request>();
         auto fut = face_identify_client_->async_send_request(req);
         
-        if (rclcpp::spin_until_future_complete(node_, fut, 2s) != rclcpp::FutureReturnCode::SUCCESS)
+        if (rclcpp::spin_until_future_complete(node_, fut, 3s) != rclcpp::FutureReturnCode::SUCCESS)
         {
             return set_unknown();
         }
