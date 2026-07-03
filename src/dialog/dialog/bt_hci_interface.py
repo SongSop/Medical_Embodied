@@ -1,6 +1,8 @@
 
 import time
 import rclpy
+import subprocess
+from pathlib import Path
 
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
@@ -48,6 +50,43 @@ INTERACTION_ALERT = 0
 INTERACTION_PASSIVE = 1
 
 INTERACTION_INTERRUPT = 2
+
+
+AUDIO_ASSETS_DIR = (
+    Path(__file__).resolve().parents[2] / "llm_node_comm" / "audio_assets"
+)
+
+
+def play_mp3_non_blocking(filename: str) -> None:
+    subprocess.Popen(
+        [
+            "ffplay",
+            "-nodisp",
+            "-autoexit",
+            "-loglevel",
+            "quiet",
+            str(AUDIO_ASSETS_DIR / filename),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+def play_mp3_blocking(filename: str) -> None:
+    subprocess.run(
+        [
+            "ffplay",
+            "-nodisp",
+            "-autoexit",
+            "-loglevel",
+            "quiet",
+            str(AUDIO_ASSETS_DIR / filename),
+        ],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 class LLMMockServer(Node):
@@ -154,12 +193,12 @@ class LLMMockServer(Node):
         
         # --------------------------------------------------
         # 说几句客套话
-        req = TtsOneshot.Request()
-        req.tts_text = '您好，我是小医，您需要什么帮助吗？'
-        req.block = True
-
-        # 调用服务，进行语音合成
-        self.tts_client.call(req)
+        # req = TtsOneshot.Request()
+        # req.tts_text = '您好，我是小医，您需要什么帮助吗？'
+        # req.block = True
+        #
+        # self.tts_client.call(req)
+        play_mp3_non_blocking("xiaoyi_greeting.mp3")
         # --------------------------------------------------
 
         # 非告警模式先发送一次“收到上下文”的反馈信息。
@@ -208,12 +247,12 @@ class LLMMockServer(Node):
         if not self.call_nurse:
             # --------------------------------------------------
             # 说几句客套话
-            req = TtsOneshot.Request()
-            req.tts_text = "没有其他事情的话，小医先走了，有问题记得叫小医。"
-            req.block = True
-
-            # 调用服务，进行语音合成
-            self.tts_client.call(req)
+            # req = TtsOneshot.Request()
+            # req.tts_text = "没有其他事情的话，小医先走了，有问题记得叫小医。"
+            # req.block = True
+            #
+            # self.tts_client.call(req)
+            play_mp3_blocking("xiaoyi_goodbye.mp3")
             # --------------------------------------------------
 
 

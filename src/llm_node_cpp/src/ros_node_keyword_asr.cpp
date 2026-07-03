@@ -7,6 +7,8 @@
 #include <signal.h>
 #include <chrono>
 #include <thread>
+#include <filesystem>
+#include <cstdlib>
 #include <portaudio.h>
 
 #include "std_msgs/msg/string.hpp"
@@ -134,6 +136,28 @@ namespace {
         hzc::asr->setInStreamCallbackProcessAudio();
         mic_status = "asr";
     }
+
+    std::string audio_asset_path(const std::string &filename) {
+        const auto base =
+            std::filesystem::path(__FILE__).parent_path().parent_path().parent_path();
+        return (base / "llm_node_comm" / "audio_assets" / filename).string();
+    }
+
+    void play_mp3_non_blocking(const std::string &filename) {
+        const auto path = audio_asset_path(filename);
+        std::thread([path]() {
+            const std::string cmd =
+                "ffplay -nodisp -autoexit -loglevel quiet \"" + path + "\" >/dev/null 2>&1";
+            std::system(cmd.c_str());
+        }).detach();
+    }
+
+    void play_mp3_blocking(const std::string &filename) {
+        const auto path = audio_asset_path(filename);
+        const std::string cmd =
+            "ffplay -nodisp -autoexit -loglevel quiet \"" + path + "\" >/dev/null 2>&1";
+        std::system(cmd.c_str());
+    }
 }
 
 namespace {
@@ -221,7 +245,8 @@ namespace {
 
         std::thread([=]() {
             // 播放客套话（阻塞）
-            call_oneshot_tts("你好！我在呢！", true);
+            // call_oneshot_tts("你好！我在呢！", true);
+            play_mp3_blocking("hello_i_am_here.mp3");
 
             // 发送一个 topic 信号，告诉行为树 kws 开启了
             std_msgs::msg::Bool msg;
@@ -339,7 +364,8 @@ namespace {
         // }
 
         // 在进行后续判断前，先给出收到语音的反馈，不进行阻塞
-        call_oneshot_tts("小医听到了", false);
+        // call_oneshot_tts("小医听到了", false);
+        play_mp3_non_blocking("xiaoyi_heard_you.mp3");
 
         // 判断是否需要呼叫护士，以及用户是否想结束对话
         auto request = std::make_shared<llm_node_comm::srv::NurseAlert::Request>();

@@ -14,6 +14,7 @@ ros2 topic echo /start_kws
 
 import sys
 import os
+import subprocess
 from pathlib import Path
 
 import rclpy
@@ -33,6 +34,43 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 from llm_node_comm.srv import TtsOneshot  # type: ignore
+
+
+AUDIO_ASSETS_DIR = (
+    Path(__file__).resolve().parents[2] / "llm_node_comm" / "audio_assets"
+)
+
+
+def play_mp3_non_blocking(filename: str) -> None:
+    subprocess.Popen(
+        [
+            "ffplay",
+            "-nodisp",
+            "-autoexit",
+            "-loglevel",
+            "quiet",
+            str(AUDIO_ASSETS_DIR / filename),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+def play_mp3_blocking(filename: str) -> None:
+    subprocess.run(
+        [
+            "ffplay",
+            "-nodisp",
+            "-autoexit",
+            "-loglevel",
+            "quiet",
+            str(AUDIO_ASSETS_DIR / filename),
+        ],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 class RealTimeKeywordSpotter:
@@ -191,7 +229,8 @@ class Ros2KeywordSpotterNode(Node):
         if detected:
 
             # 这里添加 tts once, 发送一个阻塞的语音表示自己听到了
-            self.call_oneshot_tts("你好！我在呢！", True)
+            # self.call_oneshot_tts("你好！我在呢！", True)
+            play_mp3_blocking("hello_i_am_here.mp3")
 
             # 向外面发送一个消息，表示已经完成 kws 检测了
             msg = Bool()
@@ -215,4 +254,3 @@ if __name__ == "__main__":
     finally:
         node.destroy_node()
         rclpy.shutdown()
-
