@@ -68,12 +68,22 @@ echo "[INFO] Building ROS 2 workspace at: $CURRENT_DIR"
 # ================================
 # 构建
 # ================================
+# librealsense2 custom install (for L515 camera support)
+# TODO: Set this to your librealsense2 install prefix before building
+#   git clone https://github.com/IntelRealSense/librealsense.git
+#   mkdir build && cd build
+#   cmake .. -DCMAKE_INSTALL_PREFIX=/your/install/path
+#   make -j$(nproc) && make install
+REALSENSE_PREFIX="/path/to/librealsense/install"
+
 colcon build \
   ${SELECTED_PKGS:+--packages-select "${SELECTED_PKGS[@]}"} \
   --parallel-workers $PARALLEL_WORKERS \
   --cmake-args \
     -DPython3_EXECUTABLE=$SYSTEM_PYTHON \
-    -DCMAKE_BUILD_PARALLEL_LEVEL=$BUILD_JOBS
+    -DCMAKE_BUILD_PARALLEL_LEVEL=$BUILD_JOBS \
+    -Drealsense2_DIR="${REALSENSE_PREFIX}/lib/cmake/realsense2" \
+    -DREALSENSE2_LIB_DIR="${REALSENSE_PREFIX}/lib"
 
 # ================================
 # 完成提示

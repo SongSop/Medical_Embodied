@@ -6,7 +6,7 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 
 
-DEFAULT_MAP_PATH = "/home/medical/maps/map_0622.yaml"
+DEFAULT_MAP_PATH = "/home/medical/maps/lio_map_0630.yaml"
 
 
 def generate_launch_description():
@@ -25,6 +25,12 @@ def generate_launch_description():
     )
     navigation_rpp_hdl_launch = PathJoinSubstitution(
         [FindPackageShare("xjrobot_navigation"), "launch", "nav_rpp_hdl.launch.py"]
+    )
+    bridge_launch = PathJoinSubstitution(
+        [FindPackageShare("xjrobot_bridge"), "launch", "xjrobot_bridge.launch.py"]
+    )
+    default_waypoints_file = PathJoinSubstitution(
+        [FindPackageShare("xjrobot_bridge"), "config", "hdl_waypoints.yaml"]
     )
 
     use_sim_time = LaunchConfiguration("use_sim_time")
@@ -82,6 +88,15 @@ def generate_launch_description():
         }.items(),
     )
 
+    # 上层任务桥接：将业务层自定义 navigate action 转换为 Nav2 navigate_to_pose。
+    # 依赖 Nav2 action server 已启动，因此在导航之后延迟拉起。
+    bridge_include = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(bridge_launch),
+        launch_arguments={
+            "waypoints_file": LaunchConfiguration("waypoints_file"),
+        }.items(),
+    )
+
     return LaunchDescription(
         [
             DeclareLaunchArgument(
@@ -93,6 +108,11 @@ def generate_launch_description():
                 "map",
                 default_value=DEFAULT_MAP_PATH,
                 description="2D occupancy map yaml used by Nav2 map_server.",
+            ),
+            DeclareLaunchArgument(
+                "waypoints_file",
+                default_value=default_waypoints_file,
+                description="xjrobot_bridge waypoint config file.",
             ),
             DeclareLaunchArgument(
                 "launch_rslidar",
@@ -164,6 +184,11 @@ def generate_launch_description():
                 description="Launch Nav2 with nav_rpp_hdl.launch.py.",
             ),
             DeclareLaunchArgument(
+                "launch_bridge",
+                default_value="true",
+                description="Launch the application-to-Nav2 bridge node.",
+            ),
+            DeclareLaunchArgument(
                 "navigation_rviz",
                 default_value="true",
                 description="Launch RViz from the navigation package.",
@@ -173,7 +198,13 @@ def generate_launch_description():
             hdl_localization_include,
             TimerAction(
                 period=5.0,
+                condition=IfCondition(LaunchConfiguration("launch_navigation")),
                 actions=[navigation_include],
+            ),
+            TimerAction(
+                period=8.0,
+                condition=IfCondition(LaunchConfiguration("launch_bridge")),
+                actions=[bridge_include],
             ),
         ]
     )

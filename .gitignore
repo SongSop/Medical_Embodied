@@ -63,3 +63,4 @@ Qwen3-TTS-12Hz-0.6B-CustomVoice/
 # 环境配置和模型文件
 environment.yml
 src/monitor/models/open_clip_pytorch_model.bin
+CLAUDE.md

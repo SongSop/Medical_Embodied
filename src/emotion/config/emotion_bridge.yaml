@@ -1,0 +1,32 @@
+emotion_bridge:
+  ros__parameters:
+    serial_port: "/dev/emotion"
+    baudrate: 115200
+    topic: "emotion"
+
+    # 未在列表中匹配到时使用的默认表情（平静）
+    default_emotion: "neutral"
+
+    # 允许显示的表情列表（与 raspi-eye 协议一致）
+    emotions:
+      - neutral
+      - happy
+      - sad
+      - angry
+      - surprised
+      - curious
+
+    # 别名映射，格式 "别名=标准表情名"
+    emotion_aliases:
+      - "平静=neutral"
+      - "中性=neutral"
+      - "开心=happy"
+      - "高兴=happy"
+      - "快乐=happy"
+      - "悲伤=sad"
+      - "难过=sad"
+      - "生气=angry"
+      - "愤怒=angry"
+      - "惊讶=surprised"
+      - "吃惊=surprised"
+      - "好奇=curious"
